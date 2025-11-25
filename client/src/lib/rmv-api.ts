@@ -57,17 +57,28 @@ export async function searchLocation(query: string): Promise<StopLocation[]> {
     const data = await res.json();
     console.log("Location data:", data);
     
-    if (!data.StopLocation) return [];
+    // Handle the array structure: stopLocationOrCoordLocation array containing objects with StopLocation
+    const locationList = data.stopLocationOrCoordLocation || data.StopLocation;
+    if (!locationList) return [];
     
     // Ensure array
-    const stops = Array.isArray(data.StopLocation) ? data.StopLocation : [data.StopLocation];
+    const stops = Array.isArray(locationList) ? locationList : [locationList];
     
-    return stops.map((stop: any) => ({
-      id: stop.extId, // Use extId for trip requests usually, or id? HAFAS usually uses extId for trips
-      name: stop.name,
-      lat: stop.lat,
-      lon: stop.lon
-    }));
+    return stops
+      .map((item: any) => {
+        // Handle nested StopLocation if present
+        const stop = item.StopLocation || item;
+        
+        if (!stop.extId) return null;
+
+        return {
+          id: stop.extId,
+          name: stop.name,
+          lat: stop.lat,
+          lon: stop.lon
+        };
+      })
+      .filter((stop: any) => stop !== null); // Filter out invalid entries
   } catch (error) {
     console.error("Location search failed detailed:", error);
     return [];
