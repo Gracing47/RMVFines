@@ -144,7 +144,7 @@ export class VoiceAssistant {
 
 export function parseIntent(text: string): { from?: string; to?: string } {
   const lowerText = text.toLowerCase();
-  let from, to;
+  let from: string | undefined, to: string | undefined;
 
   // Pattern 1: "von A nach B"
   const pattern1 = /(?:von|ab)\s+(.+?)\s+(?:nach|zu)\s+(.+)/i;
