@@ -4,6 +4,7 @@ import { searchLocation, searchTrips, Trip } from "@/lib/rmv-api";
 import { Mic, Loader2, AlertCircle, MapPin } from "lucide-react";
 import { ConnectionCard } from "./connection-card";
 import { Button } from "@/components/ui/button";
+import { MapDisplay } from "./map-display";
 
 export function VoiceInterface() {
   const [status, setStatus] = useState<"idle" | "listening" | "processing" | "success" | "error">("idle");
@@ -161,15 +162,23 @@ export function VoiceInterface() {
 
       {/* Results Area */}
       {status === "success" && trips.length > 0 && (
-        <div className="w-full space-y-4 px-4 animate-in slide-in-from-bottom-8 duration-700">
+        <div className="w-full space-y-6 px-4 animate-in slide-in-from-bottom-8 duration-700">
           {routeInfo && (
-            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-6">
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <MapPin className="h-4 w-4" />
               <span>{routeInfo.from}</span>
               <span className="text-white/20">→</span>
               <span>{routeInfo.to}</span>
             </div>
           )}
+          
+          {/* Map Display */}
+          <div className="w-full h-64 rounded-xl overflow-hidden border border-white/10 shadow-lg relative z-0">
+            <MapDisplay 
+              startLeg={trips[0].legs[0]} 
+              endLeg={trips[0].legs[trips[0].legs.length - 1]} 
+            />
+          </div>
           
           <div className="space-y-3">
             {trips.map((trip, i) => (

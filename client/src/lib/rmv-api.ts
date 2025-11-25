@@ -37,6 +37,8 @@ export interface Leg {
     rtTime?: string;
     rtDate?: string;
     rtTrack?: string;
+    lat?: number;
+    lon?: number;
     Notes?: {
       Note: {
         value?: string;
@@ -52,6 +54,8 @@ export interface Leg {
     rtTime?: string;
     rtDate?: string;
     rtTrack?: string;
+    lat?: number;
+    lon?: number;
   };
   name: string; // e.g., "S-Bahn S8"
   type: string; // "JNY"
