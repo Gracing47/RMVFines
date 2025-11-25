@@ -1,5 +1,7 @@
 const API_KEY = "765abdb9-e12c-46a0-84fa-2349bc29fb5b";
 const BASE_URL = "https://www.rmv.de/hapi";
+// Use a CORS proxy for frontend-only development to avoid CORS errors
+const CORS_PROXY = "https://corsproxy.io/?";
 
 export interface StopLocation {
   id: string;
@@ -41,11 +43,19 @@ export function formatTime(time: string) {
 }
 
 export async function searchLocation(query: string): Promise<StopLocation[]> {
-  const url = `${BASE_URL}/location.name?accessId=${API_KEY}&input=${encodeURIComponent(query)}&format=json`;
+  const targetUrl = `${BASE_URL}/location.name?accessId=${API_KEY}&input=${encodeURIComponent(query)}&format=json`;
+  const url = `${CORS_PROXY}${encodeURIComponent(targetUrl)}`;
   
   try {
+    console.log(`Fetching location: ${targetUrl}`);
     const res = await fetch(url);
+    
+    if (!res.ok) {
+      throw new Error(`API returned ${res.status}: ${res.statusText}`);
+    }
+
     const data = await res.json();
+    console.log("Location data:", data);
     
     if (!data.StopLocation) return [];
     
@@ -59,17 +69,25 @@ export async function searchLocation(query: string): Promise<StopLocation[]> {
       lon: stop.lon
     }));
   } catch (error) {
-    console.error("Location search failed", error);
+    console.error("Location search failed detailed:", error);
     return [];
   }
 }
 
 export async function searchTrips(originId: string, destId: string) {
-  const url = `${BASE_URL}/trip?accessId=${API_KEY}&originId=${encodeURIComponent(originId)}&destId=${encodeURIComponent(destId)}&format=json&numF=3`;
+  const targetUrl = `${BASE_URL}/trip?accessId=${API_KEY}&originId=${encodeURIComponent(originId)}&destId=${encodeURIComponent(destId)}&format=json&numF=3`;
+  const url = `${CORS_PROXY}${encodeURIComponent(targetUrl)}`;
 
   try {
+    console.log(`Fetching trips: ${targetUrl}`);
     const res = await fetch(url);
+
+    if (!res.ok) {
+      throw new Error(`API returned ${res.status}: ${res.statusText}`);
+    }
+
     const data = await res.json();
+    console.log("Trip data:", data);
     
     if (!data.Trip) return [];
     
@@ -90,7 +108,7 @@ export async function searchTrips(originId: string, destId: string) {
       };
     });
   } catch (error) {
-    console.error("Trip search failed", error);
+    console.error("Trip search failed detailed:", error);
     return [];
   }
 }
