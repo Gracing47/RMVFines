@@ -34,21 +34,52 @@ export interface Leg {
     time: string;
     date: string;
     track?: string;
+    rtTime?: string;
+    rtDate?: string;
+    rtTrack?: string;
+    Notes?: {
+      Note: {
+        value?: string;
+        key: string;
+      }[];
+    };
   };
   Destination: {
     name: string;
     time: string;
     date: string;
     track?: string;
+    rtTime?: string;
+    rtDate?: string;
+    rtTrack?: string;
   };
   name: string; // e.g., "S-Bahn S8"
   type: string; // "JNY"
+  Messages?: {
+    Message: {
+      text: string;
+      type: string;
+    }[];
+  };
 }
 
 // Helper to format RMV time (hh:mm:ss) to simpler hh:mm
 export function formatTime(time: string) {
   if (!time) return "";
   return time.substring(0, 5);
+}
+
+// Helper to calculate delay in minutes
+export function getDelay(scheduled: string, realTime?: string): number {
+  if (!realTime) return 0;
+  
+  const [h1, m1] = scheduled.split(':').map(Number);
+  const [h2, m2] = realTime.split(':').map(Number);
+  
+  const scheduledMins = h1 * 60 + m1;
+  const realMins = h2 * 60 + m2;
+  
+  return realMins - scheduledMins;
 }
 
 export async function searchLocation(query: string): Promise<StopLocation[]> {
