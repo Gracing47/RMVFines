@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { VoiceAssistant, parseIntent } from "@/lib/voice";
-import { searchLocation, searchTrips, Trip } from "@/lib/rmv-api";
-import { Mic, Loader2, AlertCircle, MapPin } from "lucide-react";
+import { searchLocation, searchTrips, searchNearbyStations, Trip } from "@/lib/rmv-api";
+import { Mic, Loader2, AlertCircle, MapPin, Navigation } from "lucide-react";
 import { ConnectionCard } from "./connection-card";
 import { Button } from "@/components/ui/button";
 
@@ -32,6 +32,15 @@ export function VoiceInterface() {
     return () => assistantRef.current?.stop();
   }, []);
 
+  const getGeolocation = (): Promise<GeolocationPosition> => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Geolocation is not supported"));
+      }
+      navigator.geolocation.getCurrentPosition(resolve, reject);
+    });
+  };
+
   const handleVoiceResult = async (text: string) => {
     setTranscript(text);
     setStatus("processing");
@@ -45,14 +54,36 @@ export function VoiceInterface() {
       return;
     }
 
-    const fromQuery = intent.from || "Frankfurt Hauptbahnhof"; // Default fallback
+    let fromQuery = intent.from;
     const toQuery = intent.to;
 
     try {
+      let start;
+
       // Step A: Find Start
-      const startLocations = await searchLocation(fromQuery);
-      if (startLocations.length === 0) throw new Error(`Startort "${fromQuery}" nicht gefunden.`);
-      const start = startLocations[0];
+      if (fromQuery === "CURRENT_LOCATION") {
+        assistantRef.current?.speak("Ich suche deinen Standort...");
+        try {
+          const position = await getGeolocation();
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
+          
+          const nearbyStations = await searchNearbyStations(lat, lon);
+          if (nearbyStations.length === 0) throw new Error("Keine Haltestelle in der Nähe gefunden.");
+          
+          // Take the closest station
+          start = nearbyStations[0];
+          fromQuery = "Dein Standort (" + start.name + ")";
+        } catch (geoError) {
+          console.error(geoError);
+          throw new Error("Standortzugriff fehlgeschlagen. Bitte erlaube den Zugriff.");
+        }
+      } else {
+         fromQuery = fromQuery || "Frankfurt Hauptbahnhof"; // Default fallback
+         const startLocations = await searchLocation(fromQuery);
+         if (startLocations.length === 0) throw new Error(`Startort "${fromQuery}" nicht gefunden.`);
+         start = startLocations[0];
+      }
 
       // Step B: Find Dest
       const destLocations = await searchLocation(toQuery);
@@ -164,7 +195,7 @@ export function VoiceInterface() {
         <div className="w-full space-y-6 px-4 animate-in slide-in-from-bottom-8 duration-700">
           {routeInfo && (
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-6">
-              <MapPin className="h-4 w-4" />
+              {routeInfo.from.includes("Standort") ? <Navigation className="h-4 w-4 text-blue-400" /> : <MapPin className="h-4 w-4" />}
               <span>{routeInfo.from}</span>
               <span className="text-white/20">→</span>
               <span>{routeInfo.to}</span>

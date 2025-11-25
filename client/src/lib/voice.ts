@@ -153,6 +153,12 @@ export function parseIntent(text: string): { from?: string; to?: string } {
   if (match1) {
     from = match1[1].trim();
     to = match1[2].trim();
+    
+    // Check for "here" keywords in the "from" part
+    if (["hier", "mir", "meinem standort", "aktuellem standort"].some(k => from?.includes(k))) {
+      from = "CURRENT_LOCATION";
+    }
+    
     return { from, to };
   }
 
@@ -163,6 +169,11 @@ export function parseIntent(text: string): { from?: string; to?: string } {
   if (match2) {
     to = match2[1].trim();
     from = match2[2].trim();
+    
+    if (["hier", "mir", "meinem standort", "aktuellem standort"].some(k => from?.includes(k))) {
+      from = "CURRENT_LOCATION";
+    }
+
     return { from, to };
   }
   
@@ -172,6 +183,12 @@ export function parseIntent(text: string): { from?: string; to?: string } {
   
   if (match3) {
     to = match3[1].trim();
+    // If only destination is given, assume "from here" if context implies it, 
+    // but for safety we'll explicitly look for "von hier" in the whole text if it wasn't caught above
+    // Actually, for a voice assistant, "Nach Wiesbaden" usually implies "From here".
+    // Let's set a flag or just return to. The UI can decide to default to current location if from is missing.
+    // For this specific request "von hier nach mainz", it should be caught by pattern 1.
+    
     return { to };
   }
 

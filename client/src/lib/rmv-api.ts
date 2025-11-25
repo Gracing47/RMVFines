@@ -129,7 +129,44 @@ export async function searchLocation(query: string): Promise<StopLocation[]> {
   }
 }
 
-export async function searchTrips(originId: string, destId: string): Promise<Trip[]> {
+export async function searchNearbyStations(lat: number, lon: number): Promise<StopLocation[]> {
+  const targetUrl = `${BASE_URL}/location.nearbystops?accessId=${API_KEY}&originCoordLat=${lat}&originCoordLong=${lon}&format=json`;
+  const url = `${CORS_PROXY}${encodeURIComponent(targetUrl)}`;
+
+  try {
+    console.log(`Fetching nearby stations: ${targetUrl}`);
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      throw new Error(`API returned ${res.status}: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    console.log("Nearby data:", data);
+
+    const locationList = data.stopLocationOrCoordLocation || data.StopLocation;
+    if (!locationList) return [];
+
+    const stops = Array.isArray(locationList) ? locationList : [locationList];
+
+    return stops
+      .map((item: any) => {
+        const stop = item.StopLocation || item;
+        if (!stop.extId) return null;
+
+        return {
+          id: stop.extId,
+          name: stop.name,
+          lat: stop.lat,
+          lon: stop.lon
+        } as StopLocation;
+      })
+      .filter((stop: StopLocation | null): stop is StopLocation => stop !== null);
+  } catch (error) {
+    console.error("Nearby search failed detailed:", error);
+    return [];
+  }
+}
   const targetUrl = `${BASE_URL}/trip?accessId=${API_KEY}&originId=${encodeURIComponent(originId)}&destId=${encodeURIComponent(destId)}&format=json&numF=3`;
   const url = `${CORS_PROXY}${encodeURIComponent(targetUrl)}`;
 
