@@ -62,106 +62,113 @@ export function ConnectionCard({ trip, index }: ConnectionCardProps) {
       className="animate-in slide-in-from-bottom-4 fade-in duration-500"
       style={{ animationDelay: `${index * 150}ms` }}
     >
-      <Card className="bg-card/80 border-white/5 backdrop-blur-sm overflow-hidden hover:bg-accent/5 transition-colors group">
+      <Card className="bg-card/90 border-white/10 backdrop-blur-sm overflow-hidden hover:bg-accent/10 transition-all hover:shadow-xl hover:scale-[1.02] group">
         <Collapsible open={isOpen} onOpenChange={setIsOpen}>
           <CollapsibleTrigger asChild>
             <CardContent className="p-0 cursor-pointer">
-              <div className="flex items-stretch min-h-[100px]">
+              <div className="flex items-stretch min-h-[110px]">
                 
                 {/* Left: Minutes Countdown */}
-                <div className="w-24 flex flex-col items-center justify-center border-r border-white/5 bg-white/5 p-2">
-                  <span className={cn("text-3xl font-bold", minutesUntil <= 5 ? "text-red-500" : "text-foreground")}>
-                    {minutesUntil > 0 ? minutesUntil : "0"}
+                <div className="w-28 flex flex-col items-center justify-center border-r border-white/10 bg-gradient-to-br from-primary/10 to-primary/5 p-3">
+                  <span className={cn("text-4xl font-black", minutesUntil <= 5 ? "text-red-500 animate-pulse" : minutesUntil <= 10 ? "text-orange-500" : "text-foreground")}>
+                    {minutesUntil > 0 ? minutesUntil : "<1"}
                   </span>
-                  <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-                    min
+                  <span className="text-sm text-muted-foreground font-bold uppercase tracking-wider mt-1">
+                    Min
                   </span>
                 </div>
 
                 {/* Middle: Trip Info */}
-                <div className="flex-1 p-4 flex flex-col justify-center gap-1">
+                <div className="flex-1 p-4 flex flex-col justify-center gap-2">
                   
                   {/* Line & Destination */}
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={cn("font-bold flex items-center gap-2", getTransportColor(transportName))}>
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className={cn("text-lg font-black flex items-center gap-2", getTransportColor(transportName))}>
                       {getTransportIcon(transportName)}
                       {transportName}
                     </span>
                   </div>
 
                   {/* Times & Duration */}
-                  <div className="text-sm text-muted-foreground flex items-center gap-1">
-                    <span className={cn("font-mono text-foreground font-medium", delay > 0 && "line-through text-muted-foreground/50")}>
+                  <div className="text-base text-muted-foreground flex items-center gap-2 flex-wrap">
+                    <span className={cn("font-mono text-foreground font-bold text-lg", delay > 0 && "line-through text-muted-foreground/50")}>
                       {startTime}
                     </span>
-                    {delay > 0 && <span className="text-red-500 font-mono font-bold">{rtStartTime}</span>}
-                    <span>-</span>
-                    <span className="font-mono text-foreground font-medium">
+                    {delay > 0 && <span className="text-red-500 font-mono font-black text-lg">{rtStartTime}</span>}
+                    <ArrowRight className="h-4 w-4" />
+                    <span className="font-mono text-foreground font-bold text-lg">
                       {rtEndTime || endTime}
                     </span>
-                    
-                    <span className="mx-2 text-white/20">•</span>
-                    <span>{transfers === 0 ? "Direkt" : `${transfers} Umstieg${transfers > 1 ? 'e' : ''}`}</span>
-                    <span className="mx-2 text-white/20">•</span>
-                    <span>{duration}</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 text-sm flex-wrap">
+                    <span className="font-medium">{transfers === 0 ? "✅ Direkt" : `${transfers} Umstieg${transfers > 1 ? 'e' : ''}`}</span>
+                    <span className="text-white/30">•</span>
+                    <span className="font-medium">{duration}</span>
                   </div>
 
                   {/* Delay/Track Info */}
                   <div className="flex items-center gap-3 mt-1">
                     {track && (
-                      <span className="text-xs bg-white/10 px-2 py-0.5 rounded text-foreground/80">
-                        Gl. {track}
+                      <span className="text-sm bg-primary/20 px-3 py-1 rounded-full text-foreground font-bold border border-primary/30">
+                        Gleis {track}
                       </span>
                     )}
                     {delay > 0 && (
-                      <span className="text-xs text-red-400 flex items-center gap-1">
-                        +{delay} min
+                      <span className="text-sm text-red-400 flex items-center gap-1 font-bold animate-pulse">
+                        ⚠️ +{delay} min Verspätung
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* Right: Ticket & Expand */}
-                <div className="flex flex-col items-center justify-center p-2 gap-2 border-l border-white/5 bg-white/5 w-16">
-                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-primary/20 hover:text-primary text-muted-foreground">
-                    <Ticket className="h-5 w-5" />
-                  </Button>
-                  {isOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                {/* Right: Expand Indicator */}
+                <div className="flex flex-col items-center justify-center p-4 border-l border-white/10 bg-gradient-to-br from-white/5 to-transparent w-16">
+                  {isOpen ? (
+                    <ChevronUp className="h-7 w-7 text-primary" />
+                  ) : (
+                    <ChevronDown className="h-7 w-7 text-muted-foreground group-hover:text-primary transition-colors" />
+                  )}
+                  <span className="text-xs text-muted-foreground mt-1">{isOpen ? 'Weniger' : 'Mehr'}</span>
                 </div>
               </div>
             </CardContent>
           </CollapsibleTrigger>
 
           <CollapsibleContent>
-            <div className="bg-black/20 border-t border-white/5 p-4 space-y-4">
-              <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Fahrtverlauf</h4>
+            <div className="bg-black/30 border-t border-white/10 p-5 space-y-5">
+              <h4 className="text-base font-bold text-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+                🚆 Fahrtverlauf
+              </h4>
               
               {/* Timeline */}
-              <div className="relative pl-4 border-l border-white/10 space-y-6 ml-2">
+              <div className="relative pl-6 border-l-2 border-primary/30 space-y-7 ml-2">
                 {legs.map((leg, i) => (
                   <div key={i} className="relative">
                     {/* Dot */}
-                    <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-primary border-2 border-background" />
+                    <div className="absolute -left-[25px] top-1 w-4 h-4 rounded-full bg-primary border-4 border-background shadow-lg shadow-primary/50" />
                     
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm text-foreground">{leg.Origin.name}</span>
-                        <span className="font-mono text-xs text-muted-foreground">{formatTime(leg.Origin.time)}</span>
+                        <span className="font-bold text-base text-foreground">{leg.Origin.name}</span>
+                        <span className="font-mono text-base text-muted-foreground font-bold">{formatTime(leg.Origin.time)}</span>
                       </div>
                       
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground my-1 p-2 rounded bg-white/5">
-                        {getTransportIcon(leg.name)}
-                        <span className={getTransportColor(leg.name)}>{leg.name}</span>
-                        <ArrowRight className="h-3 w-3 opacity-50" />
-                        <span>{leg.Destination.name}</span>
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground my-2 p-3 rounded-lg bg-white/10 border border-white/5">
+                        <span className={cn("flex items-center gap-2 font-bold text-base", getTransportColor(leg.name))}>
+                          {getTransportIcon(leg.name)}
+                          {leg.name}
+                        </span>
+                        <ArrowRight className="h-4 w-4 opacity-50" />
+                        <span className="text-foreground font-medium">{leg.Destination.name}</span>
                       </div>
 
                       {i === legs.length - 1 && (
-                        <div className="mt-4 relative">
-                           <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-white border-2 border-background" />
+                        <div className="mt-5 relative">
+                           <div className="absolute -left-[25px] top-1 w-4 h-4 rounded-full bg-green-500 border-4 border-background shadow-lg shadow-green-500/50" />
                            <div className="flex items-center justify-between">
-                            <span className="font-medium text-sm text-foreground">{leg.Destination.name}</span>
-                            <span className="font-mono text-xs text-muted-foreground">{formatTime(leg.Destination.time)}</span>
+                            <span className="font-bold text-base text-foreground">🎯 {leg.Destination.name}</span>
+                            <span className="font-mono text-base text-muted-foreground font-bold">{formatTime(leg.Destination.time)}</span>
                           </div>
                         </div>
                       )}
@@ -170,8 +177,8 @@ export function ConnectionCard({ trip, index }: ConnectionCardProps) {
                 ))}
               </div>
 
-              <Button className="w-full bg-primary/90 hover:bg-primary text-primary-foreground font-medium">
-                Ticket kaufen ({trip.legs.length > 1 ? 'Preisstufe 4' : 'Preisstufe 3'})
+              <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-lg h-14 mt-6 shadow-lg">
+                🎫 Ticket kaufen
               </Button>
             </div>
           </CollapsibleContent>

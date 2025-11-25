@@ -4,38 +4,38 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --color-background: hsl(224 71% 4%);
-  --color-foreground: hsl(213 31% 91%);
+  --color-background: hsl(222 47% 11%);
+  --color-foreground: hsl(213 31% 96%);
   
-  --color-card: hsl(224 71% 4%);
-  --color-card-foreground: hsl(213 31% 91%);
+  --color-card: hsl(222 47% 15%);
+  --color-card-foreground: hsl(213 31% 96%);
   
-  --color-popover: hsl(224 71% 4%);
-  --color-popover-foreground: hsl(213 31% 91%);
+  --color-popover: hsl(222 47% 15%);
+  --color-popover-foreground: hsl(213 31% 96%);
   
-  --color-primary: hsl(85 67% 44%); /* RMV-ish Green */
+  --color-primary: hsl(142 76% 36%); /* Brighter Green for better visibility */
   --color-primary-foreground: hsl(0 0% 100%);
   
-  --color-secondary: hsl(222 47% 11%);
+  --color-secondary: hsl(222 47% 18%);
   --color-secondary-foreground: hsl(210 40% 98%);
   
-  --color-muted: hsl(223 47% 11%);
-  --color-muted-foreground: hsl(215 20% 65%);
+  --color-muted: hsl(223 47% 20%);
+  --color-muted-foreground: hsl(215 20% 70%);
   
-  --color-accent: hsl(216 34% 17%);
+  --color-accent: hsl(216 34% 22%);
   --color-accent-foreground: hsl(210 40% 98%);
   
-  --color-destructive: hsl(0 63% 31%);
-  --color-destructive-foreground: hsl(210 40% 98%);
+  --color-destructive: hsl(0 72% 51%);
+  --color-destructive-foreground: hsl(0 0% 100%);
   
-  --color-border: hsl(216 34% 17%);
-  --color-input: hsl(216 34% 17%);
-  --color-ring: hsl(85 67% 44%);
+  --color-border: hsl(216 34% 22%);
+  --color-input: hsl(216 34% 22%);
+  --color-ring: hsl(142 76% 36%);
   
-  --radius: 0.75rem;
+  --radius: 1rem;
   
-  --font-sans: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'SF Mono', 'Consolas', 'Liberation Mono', monospace;
 }
 
 @layer base {
@@ -51,14 +51,43 @@
 @keyframes pulse-ring {
   0% {
     transform: scale(0.8);
-    opacity: 0.5;
+    opacity: 0.6;
   }
   100% {
-    transform: scale(2.5);
+    transform: scale(2.8);
     opacity: 0;
   }
 }
 
 .animate-pulse-ring {
-  animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+/* Shake animation for errors */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+.shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+/* Better tap highlighting for mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Better text rendering */
+body {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
