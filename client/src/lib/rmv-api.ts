@@ -11,6 +11,15 @@ export interface StopLocation {
 }
 
 export interface Trip {
+  legs: Leg[];
+  duration: string;
+  startTime: string;
+  startDate: string;
+  endTime: string;
+  endDate: string;
+}
+
+interface RawTripResponse {
   Trip: {
     LegList: {
       Leg: Leg[];
@@ -85,7 +94,7 @@ export async function searchLocation(query: string): Promise<StopLocation[]> {
   }
 }
 
-export async function searchTrips(originId: string, destId: string) {
+export async function searchTrips(originId: string, destId: string): Promise<Trip[]> {
   const targetUrl = `${BASE_URL}/trip?accessId=${API_KEY}&originId=${encodeURIComponent(originId)}&destId=${encodeURIComponent(destId)}&format=json&numF=3`;
   const url = `${CORS_PROXY}${encodeURIComponent(targetUrl)}`;
 

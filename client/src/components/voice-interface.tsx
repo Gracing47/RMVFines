@@ -73,8 +73,8 @@ export function VoiceInterface() {
 
       // Speak first connection
       const firstTrip = foundTrips[0];
-      const startTime = firstTrip.Trip[0].LegList.Leg[0].Origin.time.substring(0, 5);
-      const track = firstTrip.Trip[0].LegList.Leg[0].Origin.track;
+      const startTime = firstTrip.legs[0].Origin.time.substring(0, 5);
+      const track = firstTrip.legs[0].Origin.track;
       
       const speakText = `Die nächste Verbindung von ${start.name} nach ${dest.name} geht um ${startTime} Uhr${track ? ` von Gleis ${track}` : ''}.`;
       assistantRef.current?.speak(speakText);

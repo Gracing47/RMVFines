@@ -9,13 +9,13 @@ interface ConnectionCardProps {
 
 export function ConnectionCard({ trip, index }: ConnectionCardProps) {
   // Get first and last leg for overview
-  const firstLeg = trip.Trip[0].LegList.Leg[0];
-  const legs = trip.Trip[0].LegList.Leg;
+  const firstLeg = trip.legs[0];
+  const legs = trip.legs;
   const lastLeg = legs[legs.length - 1];
 
   const startTime = formatTime(firstLeg.Origin.time);
   const endTime = formatTime(lastLeg.Destination.time);
-  const duration = trip.Trip[0].duration; // e.g., "PT1H2M"
+  const duration = trip.duration; // e.g., "PT1H2M"
   
   // Clean up duration string (PT1H2M -> 1h 2min)
   const cleanDuration = duration
