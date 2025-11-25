@@ -167,6 +167,7 @@ export async function searchNearbyStations(lat: number, lon: number): Promise<St
     return [];
   }
 }
+export async function searchTrips(originId: string, destId: string): Promise<Trip[]> {
   const targetUrl = `${BASE_URL}/trip?accessId=${API_KEY}&originId=${encodeURIComponent(originId)}&destId=${encodeURIComponent(destId)}&format=json&numF=3`;
   const url = `${CORS_PROXY}${encodeURIComponent(targetUrl)}`;
 
