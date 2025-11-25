@@ -76,9 +76,9 @@ export async function searchLocation(query: string): Promise<StopLocation[]> {
           name: stop.name,
           lat: stop.lat,
           lon: stop.lon
-        };
+        } as StopLocation;
       })
-      .filter((stop: any) => stop !== null); // Filter out invalid entries
+      .filter((stop: StopLocation | null): stop is StopLocation => stop !== null);
   } catch (error) {
     console.error("Location search failed detailed:", error);
     return [];

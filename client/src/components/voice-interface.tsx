@@ -90,6 +90,11 @@ export function VoiceInterface() {
   const toggleListening = () => {
     if (status === "listening") {
       assistantRef.current?.stop();
+      setStatus("idle");
+    } else if (status === "processing") {
+      // Allow cancelling processing
+      setStatus("idle");
+      setTranscript("");
     } else {
       setTranscript("");
       setErrorMsg("");

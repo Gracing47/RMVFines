@@ -49,6 +49,7 @@ export class VoiceAssistant {
   onStart: () => void;
   onEnd: () => void;
   onError: (error: any) => void;
+  timeoutId: any = null;
 
   constructor(
     onResult: (text: string) => void,
@@ -74,19 +75,28 @@ export class VoiceAssistant {
       this.recognition.onstart = () => {
         this.isListening = true;
         this.onStart();
+        // Safety timeout: stop after 8 seconds if no result
+        this.timeoutId = setTimeout(() => {
+          if (this.isListening) {
+            this.stop();
+          }
+        }, 8000);
       };
 
       this.recognition.onend = () => {
         this.isListening = false;
+        if (this.timeoutId) clearTimeout(this.timeoutId);
         this.onEnd();
       };
 
       this.recognition.onerror = (event) => {
         this.isListening = false;
+        if (this.timeoutId) clearTimeout(this.timeoutId);
         this.onError(event);
       };
 
       this.recognition.onresult = (event) => {
+        if (this.timeoutId) clearTimeout(this.timeoutId);
         const transcript = event.results[0][0].transcript;
         this.onResult(transcript);
       };
@@ -94,6 +104,7 @@ export class VoiceAssistant {
       console.error("Speech recognition not supported in this browser.");
     }
   }
+
 
   start() {
     if (this.recognition && !this.isListening) {
