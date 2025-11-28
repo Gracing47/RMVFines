@@ -1,70 +1,107 @@
 # RMV HAFAS API Dokumentation & Nutzung
 
-Diese Datei beschreibt, wie die **RMV HAFAS API** in dieser Anwendung integriert wurde, um eine sprachgesteuerte Fahrplanauskunft zu ermöglichen.
+Diese Datei beschreibt, wie die **RMV HAFAS API** in dieser Anwendung integriert wurde, um eine sprachgesteuerte Fahrplanauskunft zu ermöglichen. Sie dient als **Knowledge Base für das Entwickler-Team** und fokussiert sich auf Barrierefreiheit ("Barrier-Free").
 
 ## 1. Allgemeine Konfiguration
 
 *   **Base URL:** `https://www.rmv.de/hapi`
-*   **Format:** JSON (`format=json`)
-*   **Authentifizierung:** Access ID Parameter (`accessId`)
+*   **Authentifizierung:** Der Parameter `accessId` ist bei jedem Aufruf obligatorisch.
+*   **Format:** Standard ist XML. Für JSON füge `format=json` an.
 *   **CORS-Proxy:** Da die API keine direkten Browser-Anfragen (CORS) erlaubt, werden alle Anfragen über `https://corsproxy.io/?` getunnelt.
 
-## 2. Genutzte Endpunkte
+---
 
-Wir verwenden zwei Haupt-Endpunkte, um von einer gesprochenen Eingabe zu einer konkreten Verbindungsauskunft zu gelangen.
+## 2. Funktion: Standortsuche & Zielwahl (GPS + Ziel)
 
-### A. Haltestellensuche (`/location.name`)
+Hier geht es darum, den aktuellen Standort (Koordinaten) in eine Haltestelle umzuwandeln und eine Verbindung zu einem gesuchten Ziel zu finden.
 
-Dieser Endpunkt wandelt einen Namen (z.B. "Frankfurt Hauptbahnhof") in eine eindeutige System-ID (`extId`) um.
+### Schritt A: GPS-Koordinaten in Haltestelle umwandeln
+Verwende diesen Endpunkt, um Haltestellen im Umkreis der GPS-Position des Nutzers zu finden.
 
-*   **Endpunkt:** `/location.name`
-*   **Parameter:**
-    *   `input`: Der Suchbegriff (z.B. "Wiesbaden").
-    *   `type`: `S` (Station/Stop) - *implizit genutzt*.
-*   **Nutzung im Code:**
-    Wir rufen diesen Endpunkt zweimal auf:
-    1.  Für den **Startort** (erkannt aus Spracheingabe).
-    2.  Für den **Zielort** (erkannt aus Spracheingabe).
-*   **Wichtige Rückgabewerte:**
-    *   `StopLocation.name`: Der offizielle Name der Haltestelle.
-    *   `StopLocation.extId`: Die ID, die für die Verbindungssuche benötigt wird (z.B. "3000010").
-    *   `StopLocation.lat` / `lon`: Geokoordinaten.
+*   **Service:** `location.nearbystops`
+*   **Wichtige Parameter:**
+    *   `originCoordLat`: Breitengrad (Latitude).
+    *   `originCoordLong`: Längengrad (Longitude).
+    *   `r`: Radius in Metern (Standard 1000m). **Für Mobilitätseingeschränkte ggf. kleiner setzen**, um "machbare" Distanzen zu zeigen.
+    *   `type`: Setze auf `S`, um nur Stationen zu finden (keine POIs).
 
-### B. Verbindungssuche (`/trip`)
+**Beispiel-Call:**
+`GET /location.nearbystops?accessId=...&originCoordLat=50.107&originCoordLong=8.663&r=500&format=json`
 
-Dieser Endpunkt sucht Verbindungen zwischen zwei Haltestellen-IDs.
+### Schritt B: Ziel suchen (Text-Input)
+Wenn der Nutzer ein Ziel eingibt (z.B. "Hauptwache").
 
-*   **Endpunkt:** `/trip`
-*   **Parameter:**
-    *   `originId`: Die `extId` des Startbahnhofs.
-    *   `destId`: Die `extId` des Zielbahnhofs.
-    *   `numF`: `3` (Anzahl der folgenden Verbindungen, die abgerufen werden sollen).
-*   **Nutzung im Code:**
-    Nachdem wir Start-ID und Ziel-ID haben, fragen wir hier die Route ab.
-*   **Wichtige Rückgabewerte:**
-    *   `Trip.LegList.Leg`: Eine Liste von Teilabschnitten (z.B. Fußweg zum Gleis -> S-Bahn Fahrt).
-    *   `Leg.Origin.time` / `date`: Abfahrtszeit.
-    *   `Leg.Origin.track`: Gleisangabe (falls verfügbar).
-    *   `Leg.name`: Name des Verkehrsmittels (z.B. "S-Bahn S8").
+*   **Service:** `location.name`
+*   **Wichtige Parameter:**
+    *   `input`: Der Suchtext.
+    *   `type`: `S` für Stationen oder `ALL` für Adressen und Stationen.
 
-## 3. Datenfluss der Anwendung
+**Beispiel-Call:**
+`GET /location.name?accessId=...&input=Hauptwache&type=S&format=json`
 
-1.  **Spracheingabe (Voice Input):**
-    *   User sagt: *"Von Frankfurt nach Mainz"*
-    *   Parser extrahiert: `Start="Frankfurt"`, `Ziel="Mainz"`.
+---
 
-2.  **ID-Resolution (Schritt A):**
-    *   Request 1: `GET /location.name?input=Frankfurt` -> Resultat ID: `3000010`
-    *   Request 2: `GET /location.name?input=Mainz` -> Resultat ID: `3000001`
+## 3. Funktion: Verbindungssuche (Routing)
 
-3.  **Routenberechnung (Schritt B):**
-    *   Request 3: `GET /trip?originId=3000010&destId=3000001`
+Dies ist das Herzstück. Hier wird die Route berechnet. Für deine App ist entscheidend, wie wir Hindernisse filtern.
 
-4.  **Anzeige & Sprachausgabe:**
-    *   Die App zeigt die nächsten 3 Verbindungen als Karten an.
-    *   Die App liest die Details der *ersten* Verbindung laut vor: *"Die nächste Verbindung... geht um 14:30 Uhr von Gleis 103."*
+*   **Service:** `trip`
+*   **Eingabe-Parameter:**
+    *   `originId`: ID der Starthaltestelle (aus Schritt 1A oder 1B).
+    *   `destId`: ID der Zielhaltestelle (aus Schritt 1B).
+    *   Alternativ Koordinaten: `originCoordLat` / `destCoordLat` etc.
 
-## 4. Besonderheiten bei der Implementierung
+### ♿ Crucial: Einstellungen für Barrierefreiheit
+Die HAFAS API bietet spezifische Filter, um Routen für Menschen mit Einschränkungen zu optimieren. Deine KI sollte diese Parameter basierend auf dem Nutzerprofil setzen:
+
+1.  **Hindernisse vermeiden (`avoidPaths`):**
+    Du kannst Treppen oder Rolltreppen explizit ausschließen.
+    *   Parameter: `avoidPaths`
+    *   Werte (kommagetrennt):
+        *   `SW`: Stairs (Treppen vermeiden)
+        *   `ES`: Escalator (Rolltreppen vermeiden - wichtig für Rollstühle/Hunde)
+        *   `RA`: Ramp (Rampen vermeiden - selten gewünscht, aber möglich)
+        *   `EA`: Elevator (Aufzüge vermeiden - selten gewünscht)
+    *   *Beispiel für Rollstuhlfahrer:* `avoidPaths=SW,ES` (Keine Treppen, keine Rolltreppen).
+
+2.  **Umsteigezeiten anpassen (`changeTimePercent`):**
+    Menschen mit Mobilitätseinschränkungen brauchen oft länger zum Umsteigen.
+    *   Parameter: `changeTimePercent`
+    *   Wert: `100` ist normal. `200` verdoppelt die berechnete Umsteigezeit.
+    *   *Empfehlung:* Setze dies standardmäßig auf 150 oder 200 für Profile mit Gehbehinderung.
+
+3.  **Fahrzeug-Attribute (`attributes` / `mobilityProfile`):**
+    Prüfe, ob Niederflurfahrzeuge oder Fahrzeuge mit Einstiegshilfe verfügbar sind.
+    *   Parameter: `mobilityProfile` (falls im RMV konfiguriert, z.B. `!BLOCK_BACKWARDS_TRAVEL`).
+    *   Parameter: `attributes`. Hier kann nach Attributen gefiltert werden (muss mit RMV-Daten abgeglichen werden, oft z.B. `bf` für barrierefrei).
+
+**Beispiel-Call (Barrierefreie Route):**
+`GET /trip?accessId=...&originId=...&destId=...&avoidPaths=SW,ES&changeTimePercent=200&format=json`
+
+---
+
+## 4. Funktion: Infos zum Standort (Abfahrstafel)
+
+Zeigt an, welche Busse/Bahnen als Nächstes fahren und ob diese barrierefrei sind.
+
+*   **Service:** `departureBoard` oder `nearbyDepartureBoard` (für GPS).
+*   **Wichtige Parameter:**
+    *   `id`: Die Stations-ID.
+    *   `time`: Aktuelle Uhrzeit (oder gewünschte Zeit).
+    *   `maxJourneys`: Anzahl der anzuzeigenden Abfahrten.
+
+*   **Barrierefrei-Info in der Antwort:**
+    Achte in der Antwort (`DepartureBoard` Response) auf das `Notes`-Element oder `Product`-Attribute. Dort stehen oft Hinweise wie "Niederflurfahrzeug" oder Symbole für Rollstuhleignung.
+
+---
+
+## Zusammenfassung für die Devs
+
+1.  **Suche:** Nutzt `location.nearbystops` für GPS und `location.name` für Text.
+2.  **Routing:** Nutzt `trip`. **Wichtigster Hebel:** Der Parameter `avoidPaths=SW,ES` (Keine Treppen/Rolltreppen) und `changeTimePercent` (längere Umsteigezeit).
+3.  **Realtime:** Die API liefert Realtime-Daten (`rtMode`). Zeigt diese unbedingt an, da ein defekter Aufzug (HIM Meldungen) eine Route unpassierbar machen kann.
+
+## Besonderheiten bei der Implementierung
 
 *   **Datenstruktur-Handling:** Die API gibt manchmal einzelne Objekte und manchmal Arrays zurück (z.B. bei `StopLocation`). Unsere `rmv-api.ts` normalisiert dies, indem sie Einzelobjekte immer in Arrays umwandelt, um Fehler zu vermeiden.
 *   **Fehlertoleranz:** Wenn eine Haltestelle nicht eindeutig gefunden wird, nimmt die App den ersten Treffer der API (Best Match).
