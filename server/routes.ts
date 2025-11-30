@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 
-const RMV_API_KEY = "765abdb9-e12c-46a0-84fa-2349bc29fb5b";
+const RMV_API_KEY = process.env.RMV_API_KEY || "765abdb9-e12c-46a0-84fa-2349bc29fb5b";
 const RMV_BASE_URL = "https://www.rmv.de/hapi";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -17,7 +17,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const url = `${RMV_BASE_URL}/${endpoint}?${searchParams.toString()}`;
     console.log(`[RMV API] Fetching: ${url}`);
 
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "RMV-Voice-App/1.0",
+        "Accept": "application/json"
+      }
+    });
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[RMV API Error] Status: ${response.status}, Body: ${errorText}`);
