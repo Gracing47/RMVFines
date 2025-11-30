@@ -19,6 +19,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const response = await fetch(url);
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[RMV API Error] Status: ${response.status}, Body: ${errorText}`);
       throw new Error(`RMV API Error: ${response.status} ${response.statusText}`);
     }
     return response.json();
