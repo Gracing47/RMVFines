@@ -78,9 +78,54 @@ export function getDelay(scheduled: string, realTime?: string): number {
 
 export async function searchLocation(query: string): Promise<StopLocation[]> {
   try {
+    // First, try exact search with the original query
     const res = await fetch(`/api/locations/search?query=${encodeURIComponent(query)}`);
     if (!res.ok) throw new Error(`API Error: ${res.statusText}`);
-    return await res.json();
+    const results = await res.json();
+
+    // If we got good results, return them
+    if (results.length > 0) {
+      return results;
+    }
+
+    // If no results, try with normalized query (remove accents, special chars)
+    const { normalizeText } = await import('./fuzzy-search');
+    const normalizedQuery = normalizeText(query);
+
+    // Try common variations for German umlauts
+    const variations = [
+      normalizedQuery,
+      normalizedQuery.replace(/ae/g, 'ä').replace(/oe/g, 'ö').replace(/ue/g, 'ü'),
+      normalizedQuery.replace(/ss/g, 'ß'),
+    ];
+
+    // Try each variation
+    for (const variant of variations) {
+      if (variant === query) continue; // Skip if same as original
+
+      const variantRes = await fetch(`/api/locations/search?query=${encodeURIComponent(variant)}`);
+      if (variantRes.ok) {
+        const variantResults = await variantRes.json();
+        if (variantResults.length > 0) {
+          return variantResults;
+        }
+      }
+    }
+
+    // If still no results, try partial matches
+    // Split query into words and try each word
+    const words = query.split(/\s+/).filter(w => w.length > 2);
+    for (const word of words) {
+      const wordRes = await fetch(`/api/locations/search?query=${encodeURIComponent(word)}`);
+      if (wordRes.ok) {
+        const wordResults = await wordRes.json();
+        if (wordResults.length > 0) {
+          return wordResults;
+        }
+      }
+    }
+
+    return [];
   } catch (error) {
     console.error("Location search failed:", error);
     return [];

@@ -35,6 +35,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const data = await fetchRMV("location.name", {
         input: query,
         type: "S", // Stations only
+        maxNo: "10", // Request more results for better fuzzy matching
       });
 
       // Normalize response

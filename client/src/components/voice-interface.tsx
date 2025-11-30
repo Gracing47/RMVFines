@@ -1,24 +1,28 @@
-import { useState, useCallback } from "react";
-import { parseIntent, speak } from "@/lib/voice";
+import { useState, useCallback, useEffect } from "react";
+import { parseIntent, speak, cancelSpeech } from "@/lib/voice";
 import { searchLocation, searchTrips, searchNearbyStations, Trip } from "@/lib/rmv-api";
-import { Mic, Loader2, AlertCircle, MapPin, Navigation, ArrowRight, Accessibility } from "lucide-react";
+import { Mic, Loader2, AlertCircle, MapPin, Navigation, ArrowRight, Accessibility, Keyboard, X } from "lucide-react";
 import { ConnectionCard } from "./connection-card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useVoiceRecognition } from "@/hooks/use-voice-recognition";
+import { cn } from "@/lib/utils";
 
 export function VoiceInterface() {
   const [status, setStatus] = useState<"idle" | "listening" | "processing" | "success" | "error">("idle");
   const [trips, setTrips] = useState<Trip[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [routeInfo, setRouteInfo] = useState<{ from: string, to: string } | null>(null);
-  const [showHelp, setShowHelp] = useState(true);
   const [manualInput, setManualInput] = useState("");
   const [isWheelchair, setIsWheelchair] = useState(false);
+  const [showInput, setShowInput] = useState(false);
+
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const handleVoiceResult = useCallback(async (text: string) => {
     setStatus("processing");
+    setManualInput(text);
 
     try {
       const intent = parseIntent(text);
@@ -34,8 +38,9 @@ export function VoiceInterface() {
       let dest;
 
       // Step A: Find Start
-      if (fromQuery === "CURRENT_LOCATION") {
-        speak("Ich ermittle deinen Standort...");
+      if (!fromQuery || fromQuery === "CURRENT_LOCATION") {
+        setIsSpeaking(true);
+        speak("Ich ermittle deinen Standort...", () => setIsSpeaking(false));
 
         const position = await new Promise<GeolocationPosition>((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, {
@@ -55,9 +60,9 @@ export function VoiceInterface() {
 
         start = nearbyStations[0];
         fromQuery = "Deinem Standort";
-        speak(`Nächste Haltestelle: ${start.name}`);
+        setIsSpeaking(true);
+        speak(`Nächste Haltestelle: ${start.name}`, () => setIsSpeaking(false));
       } else {
-        fromQuery = fromQuery || "Frankfurt Hauptbahnhof";
         const startLocations = await searchLocation(fromQuery);
         if (startLocations.length === 0) throw new Error(`Startort "${fromQuery}" nicht gefunden.`);
         start = startLocations[0];
@@ -84,15 +89,22 @@ export function VoiceInterface() {
       const firstTrip = foundTrips[0];
       const startTime = firstTrip.legs[0].Origin.time.substring(0, 5);
       const track = firstTrip.legs[0].Origin.track;
+      const transportName = firstTrip.legs[0].name;
+      const platformType = transportName.includes("Bus") ? "Haltestelle" : "Gleis";
 
-      speak(`Die nächste Verbindung von ${start.name} nach ${dest.name} geht um ${startTime} Uhr${track ? ` von Gleis ${track}` : ''}.`);
+      setIsSpeaking(true);
+      speak(
+        `Die nächste Verbindung von ${start.name} nach ${dest.name} geht um ${startTime} Uhr${track ? ` von ${platformType} ${track}` : ''}.`,
+        () => setIsSpeaking(false)
+      );
 
     } catch (err: any) {
       console.error(err);
       setStatus("error");
       const msg = err.message || "Ein Fehler ist aufgetreten.";
       setErrorMsg(msg);
-      speak(msg);
+      setIsSpeaking(true);
+      speak(msg, () => setIsSpeaking(false));
     }
   }, [isWheelchair]);
 
@@ -100,7 +112,6 @@ export function VoiceInterface() {
     isListening,
     isReceivingAudio,
     transcript,
-    error: voiceError,
     startListening,
     stopListening,
     reset: resetVoice
@@ -108,229 +119,270 @@ export function VoiceInterface() {
     onResult: handleVoiceResult,
     onError: (err) => {
       setStatus("error");
-
+      setShowInput(true); // Auto-show input on error
       let msg = "Ein Fehler ist aufgetreten.";
       let speakMsg = "Es gab ein Problem.";
 
       if (err === 'no-speech') {
-        msg = "Ich habe nichts gehört. Bitte sprich lauter oder näher am Mikrofon.";
+        msg = "Ich habe nichts gehört. Bitte sprich lauter.";
         speakMsg = "Ich habe nichts gehört.";
       } else if (err === 'not-allowed') {
-        msg = "Mikrofon-Zugriff verweigert. Bitte überprüfe deine Einstellungen.";
+        msg = "Mikrofon-Zugriff verweigert.";
         speakMsg = "Ich darf dein Mikrofon nicht benutzen.";
       } else if (err === 'network') {
         msg = "Netzwerkfehler. Bitte überprüfe deine Internetverbindung.";
         speakMsg = "Ich habe keine Verbindung zum Internet.";
-      } else if (err === 'aborted') {
-        // Don't show error for aborted
-        return;
-      } else {
-        msg = `Fehler: ${err}`;
       }
 
       setErrorMsg(msg);
-      speak(speakMsg);
+      setIsSpeaking(true);
+      speak(speakMsg, () => setIsSpeaking(false));
     }
   });
 
+  // Update input with transcript while listening
+  useEffect(() => {
+    if (transcript) {
+      setManualInput(transcript);
+    }
+  }, [transcript]);
+
   const toggleListening = () => {
+    if (isSpeaking) {
+      cancelSpeech();
+      setIsSpeaking(false);
+      // Fall through to start listening
+    }
+
     if (isListening) {
       stopListening();
     } else {
       resetVoice();
       setTrips([]);
       setRouteInfo(null);
-      setShowHelp(false);
       setStatus("listening");
       startListening();
+      setShowInput(false);
     }
   };
 
   const handleReset = () => {
     setStatus("idle");
     setTrips([]);
-    setShowHelp(true);
     resetVoice();
     setManualInput("");
+    setShowInput(false);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (manualInput.trim()) {
+      handleVoiceResult(manualInput);
+    }
   };
 
   return (
-    <div className="flex flex-col items-center w-full max-w-2xl mx-auto min-h-[85vh] justify-center py-6 px-4">
+    <div className="flex flex-col items-center w-full max-w-3xl mx-auto min-h-[85vh] py-8 px-4 relative overflow-hidden">
 
-      <div className="text-center mb-8 space-y-6 min-h-[140px] w-full">
-        {status === "idle" && showHelp && (
-          <div className="space-y-4 animate-in fade-in slide-in-from-top-4">
-            <div className="flex items-center justify-center gap-4 mb-6 bg-secondary/30 p-3 rounded-full w-fit mx-auto backdrop-blur-sm border border-white/5">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="wheelchair-mode"
-                  checked={isWheelchair}
-                  onCheckedChange={setIsWheelchair}
-                />
-                <Label htmlFor="wheelchair-mode" className="flex items-center gap-2 cursor-pointer font-medium">
-                  <Accessibility className="h-4 w-4" />
-                  Barrierefrei
-                </Label>
-              </div>
-            </div>
-
-            <h2 className="text-3xl font-bold text-foreground">
-              Wohin möchten Sie fahren?
-            </h2>
-            <div className="space-y-2 text-lg text-muted-foreground">
-              <p className="flex items-center justify-center gap-2">
-                <Mic className="h-5 w-5 text-primary" />
-                Drücken Sie den Mikrofon-Button
-              </p>
-              <div className="mt-4 space-y-2 text-base opacity-70">
-                <p className="font-medium">Beispiele:</p>
-                <p>"Von hier nach Frankfurt"</p>
-                <p>"Nach Wiesbaden Hauptbahnhof"</p>
-              </div>
-            </div>
+      {/* Header / Brand Area */}
+      <div className="w-full flex justify-between items-center mb-8 z-10">
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground font-bold shadow-lg shadow-primary/20">
+            RMV
           </div>
-        )}
+          <span className="font-bold text-xl tracking-tight text-slate-800">Voice</span>
+        </div>
 
-        {status === "listening" && (
-          <div className="space-y-3 animate-in fade-in">
-            <div className={`text-3xl font-bold animate-pulse ${isReceivingAudio ? "text-green-500" : "text-primary"}`}>
-              {isReceivingAudio ? "🔊 Ich höre..." : "🎤 Sprechen Sie jetzt"}
-            </div>
-            <p className="text-muted-foreground text-lg">Sagen Sie Ihr Ziel...</p>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center space-x-2 bg-white px-3 py-1.5 rounded-full shadow-sm border border-slate-100">
+            <Switch
+              id="wheelchair-mode"
+              checked={isWheelchair}
+              onCheckedChange={setIsWheelchair}
+            />
+            <Label htmlFor="wheelchair-mode" className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-600">
+              <Accessibility className="h-4 w-4" />
+              Barrierefrei
+            </Label>
           </div>
-        )}
-
-        {transcript && (
-          <div className="text-3xl font-bold text-foreground px-4 animate-in fade-in">
-            "{transcript}"
-          </div>
-        )}
-
-        {status === "processing" && (
-          <div className="flex flex-col items-center justify-center gap-3 text-muted-foreground animate-in fade-in">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-xl">Suche Verbindungen...</p>
-          </div>
-        )}
-
-        {status === "error" && (
-          <div className="space-y-3 animate-in shake">
-            <div className="flex items-center justify-center gap-3 text-destructive">
-              <AlertCircle className="h-8 w-8" />
-            </div>
-            <p className="text-lg font-medium text-destructive px-4">{errorMsg}</p>
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={toggleListening}
-              className="mt-4 text-lg h-14 px-8"
-            >
-              Nochmal versuchen
-            </Button>
-          </div>
-        )}
+        </div>
       </div>
 
-      {status !== "error" && status !== "success" && (
-        <div className="relative mb-10 w-full flex flex-col items-center">
-          <div className="relative">
-            {isListening && (
-              <div className={`absolute inset-0 rounded-full animate-pulse-ring pointer-events-none ${isReceivingAudio ? "bg-green-500/30" : "bg-primary/30"}`} />
+      {/* Main Interaction Area */}
+      <div className={`w-full flex flex-col items-center transition-all duration-700 ease-in-out z-10 ${status === 'success' && !isSpeaking ? 'mt-0' : 'mt-12'}`}>
+
+        {/* Dynamic Title */}
+        <div className="text-center mb-12 h-24 flex flex-col justify-center items-center">
+          {status === 'idle' && (
+            <h1 className="text-4xl md:text-6xl font-black text-slate-900 tracking-tight animate-in fade-in slide-in-from-bottom-4 duration-700">
+              Wohin geht's?
+            </h1>
+          )}
+
+          {status === 'listening' && (
+            <h1 className="text-3xl md:text-5xl font-bold text-primary animate-pulse">
+              Ich höre zu...
+            </h1>
+          )}
+
+          {status === 'processing' && (
+            <h1 className="text-3xl md:text-5xl font-bold text-slate-700 flex items-center gap-3">
+              <Loader2 className="h-8 w-8 md:h-12 md:w-12 animate-spin text-primary" />
+              Moment...
+            </h1>
+          )}
+
+          {/* Show "Speaking" title when speaking, even if success */}
+          {isSpeaking && (
+            <h1 className="text-3xl md:text-5xl font-bold text-primary animate-pulse">
+              Ich spreche...
+            </h1>
+          )}
+
+          {status === 'success' && !isSpeaking && (
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900">
+              Verbindungen gefunden
+            </h1>
+          )}
+
+          {status === 'error' && !isSpeaking && (
+            <h1 className="text-2xl md:text-3xl font-bold text-destructive flex items-center gap-3">
+              <AlertCircle className="h-8 w-8" />
+              Ups, ein Fehler
+            </h1>
+          )}
+
+          {/* Transcript / Subtitle */}
+          <div className="mt-4 h-8">
+            {transcript && status === 'listening' && (
+              <p className="text-xl text-slate-600 font-medium animate-in fade-in">"{transcript}"</p>
             )}
+            {status === 'idle' && !showInput && (
+              <p className="text-slate-500 text-lg">Tippe auf das Mikrofon und sprich.</p>
+            )}
+            {status === 'error' && (
+              <p className="text-slate-500">{errorMsg}</p>
+            )}
+          </div>
+        </div>
+
+        {/* THE ORB - Central Interaction Element */}
+        {/* Show Orb if NOT success OR if Speaking */}
+        {(status !== 'success' || isSpeaking) && (
+          <div className="relative mb-12 group">
+            {/* Animated Rings for Listening/Speaking State */}
+            {(isListening || isSpeaking) && (
+              <>
+                <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping duration-[2000ms]" />
+                <div className="absolute inset-[-20px] rounded-full bg-primary/10 animate-pulse duration-[1500ms]" />
+              </>
+            )}
+
+            {/* Idle Pulse */}
+            {status === 'idle' && (
+              <div className="absolute inset-0 rounded-full bg-primary/5 animate-pulse duration-[3000ms]" />
+            )}
+
             <Button
               size="icon"
-              variant={isListening ? "default" : "secondary"}
-              disabled={status === "processing"}
-              className={`h-32 w-32 rounded-full shadow-2xl transition-all duration-300 ${isListening
-                ? "scale-110 bg-primary hover:bg-primary/90"
-                : status === "processing"
-                  ? "opacity-50 cursor-not-allowed"
-                  : "hover:scale-110 active:scale-95"
-                }`}
               onClick={toggleListening}
+              className={cn(
+                "relative h-32 w-32 md:h-40 md:w-40 rounded-full shadow-2xl transition-all duration-500 flex items-center justify-center border-4 overflow-hidden",
+                (isListening || isSpeaking)
+                  ? "bg-primary border-primary-foreground/20 scale-110"
+                  : "bg-gradient-to-br from-primary to-red-600 border-white hover:scale-105 hover:shadow-primary/30"
+              )}
             >
-              {status === "processing" ? (
-                <Loader2 className="h-12 w-12 animate-spin text-foreground" />
+              {(isListening || isSpeaking) ? (
+                <div className="flex items-center justify-center gap-1 h-16 w-full px-4">
+                  {[...Array(5)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="w-2 bg-white rounded-full animate-wave"
+                      style={{
+                        animationDelay: `${i * 0.15}s`,
+                        height: isSpeaking ? '60%' : '40%' // Higher waves when speaking
+                      }}
+                    />
+                  ))}
+                </div>
               ) : (
-                <Mic className={`h-14 w-14 ${isListening ? "text-primary-foreground" : "text-foreground"
-                  }`} />
+                <Mic className="h-12 w-12 md:h-16 md:w-16 text-white transition-all duration-300" />
               )}
             </Button>
           </div>
+        )}
 
-          {!isListening && (
-            <div className="w-full max-w-sm mt-8 animate-in fade-in slide-in-from-bottom-4">
-              <div className="relative mb-4">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-white/10" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">
-                    Oder tippen
-                  </span>
-                </div>
-              </div>
-
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (manualInput.trim()) {
-                    handleVoiceResult(manualInput);
-                  }
-                }}
-                className="flex gap-2"
+        {/* Manual Input Toggle - Hide when speaking or success */}
+        {status !== 'success' && !isSpeaking && (
+          <div className="w-full max-w-md mx-auto transition-all duration-300">
+            {!showInput ? (
+              <Button
+                variant="ghost"
+                onClick={() => setShowInput(true)}
+                className="mx-auto flex items-center gap-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
               >
+                <Keyboard className="h-4 w-4" />
+                Tastatur verwenden
+              </Button>
+            ) : (
+              <form onSubmit={handleSubmit} className="relative animate-in fade-in slide-in-from-bottom-2">
                 <input
                   type="text"
                   value={manualInput}
                   onChange={(e) => setManualInput(e.target.value)}
                   placeholder="z.B. Nach Frankfurt..."
-                  className="flex-1 h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full h-12 pl-4 pr-12 rounded-xl border border-slate-200 shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-lg"
+                  autoFocus
                 />
-                <Button type="submit" disabled={!manualInput.trim()}>
-                  <ArrowRight className="h-4 w-4" />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowInput(false)}
+                  className="absolute right-1 top-1 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="h-4 w-4" />
                 </Button>
               </form>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </div>
 
-      {status === "success" && trips.length > 0 && (
-        <div className="w-full space-y-6 animate-in slide-in-from-bottom-8 duration-700">
+      {/* Results Section - Only show when NOT speaking */}
+      {status === "success" && trips.length > 0 && !isSpeaking && (
+        <div className="w-full max-w-2xl animate-in slide-in-from-bottom-8 duration-700 fade-in">
           {routeInfo && (
-            <div className="bg-card/50 backdrop-blur-sm rounded-2xl p-4 mb-6 border border-white/5">
-              <div className="flex items-center justify-center gap-3 text-base">
-                {routeInfo.from.includes("Standort") ? (
-                  <Navigation className="h-6 w-6 text-blue-400" />
-                ) : (
-                  <MapPin className="h-6 w-6 text-green-400" />
-                )}
-                <span className="font-semibold">{routeInfo.from}</span>
-                <ArrowRight className="h-5 w-5 text-primary" />
-                <MapPin className="h-6 w-6 text-red-400" />
-                <span className="font-semibold">{routeInfo.to}</span>
+            <div className="flex items-center justify-between text-sm text-slate-500 mb-6 bg-slate-50 px-4 py-3 rounded-lg border border-slate-100">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-slate-400" />
+                <span className="font-medium text-slate-700">{routeInfo.from}</span>
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-300" />
+              <div className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-primary" />
+                <span className="font-medium text-slate-700">{routeInfo.to}</span>
               </div>
             </div>
           )}
 
           <div className="space-y-4">
-            <p className="text-center text-lg font-medium text-muted-foreground mb-4">
-              Ihre nächsten Verbindungen:
-            </p>
             {trips.map((trip, i) => (
               <ConnectionCard key={i} trip={trip} index={i} />
             ))}
           </div>
 
-          <Button
-            variant="outline"
-            size="lg"
-            onClick={handleReset}
-            className="w-full mt-8 text-lg h-14"
-          >
-            Neue Suche
-          </Button>
+          <div className="mt-8 flex justify-center gap-4">
+            <Button
+              size="lg"
+              onClick={toggleListening}
+              className="rounded-full h-14 px-8 shadow-lg bg-primary hover:bg-primary/90 text-white font-bold text-lg flex items-center gap-2"
+            >
+              <Mic className="h-5 w-5" />
+              Neue Anfrage
+            </Button>
+          </div>
         </div>
       )}
     </div>

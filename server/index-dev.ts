@@ -25,6 +25,7 @@ export async function setupVite(app: Express, server: Server) {
     customLogger: {
       ...viteLogger,
       error: (msg, options) => {
+        console.error("Vite Error:", msg);
         viteLogger.error(msg, options);
         process.exit(1);
       },
@@ -32,6 +33,8 @@ export async function setupVite(app: Express, server: Server) {
     server: serverOptions,
     appType: "custom",
   });
+
+  console.log("Vite server created successfully");
 
   app.use(vite.middlewares);
   app.use("*", async (req, res, next) => {

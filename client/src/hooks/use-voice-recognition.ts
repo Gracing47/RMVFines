@@ -12,6 +12,17 @@ export function useVoiceRecognition({ onResult, onError }: UseVoiceRecognitionPr
     const [error, setError] = useState<string | null>(null);
 
     const recognitionRef = useRef<any>(null);
+    const retryCountRef = useRef(0);
+    const maxRetries = 1;
+
+    // Use refs for callbacks to prevent effect re-execution
+    const onResultRef = useRef(onResult);
+    const onErrorRef = useRef(onError);
+
+    useEffect(() => {
+        onResultRef.current = onResult;
+        onErrorRef.current = onError;
+    }, [onResult, onError]);
 
     useEffect(() => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -36,8 +47,6 @@ export function useVoiceRecognition({ onResult, onError }: UseVoiceRecognitionPr
             setIsReceivingAudio(false);
         };
 
-        // Use type assertion or ignore for non-standard events if needed, 
-        // but since we typed recognitionRef as any, we can assign these to the instance.
         recognition.onsoundstart = () => {
             setIsReceivingAudio(true);
         };
@@ -47,17 +56,41 @@ export function useVoiceRecognition({ onResult, onError }: UseVoiceRecognitionPr
         };
 
         recognition.onerror = (event: any) => {
-            setIsListening(false);
-            setIsReceivingAudio(false);
             const errorMessage = event.error || "Unknown error";
+            console.error("Speech Recognition Error:", errorMessage);
 
-            // Ignore 'no-speech' if we actually got a result (sometimes happens in parallel)
+            // Ignore 'no-speech' if we actually got a result
             if (errorMessage === 'no-speech' && transcript) {
+                setIsListening(false);
+                setIsReceivingAudio(false);
                 return;
             }
 
+            // Retry on network error
+            if (errorMessage === 'network' && retryCountRef.current < maxRetries) {
+                console.log("Network error detected, retrying speech recognition...");
+                retryCountRef.current++;
+                setIsListening(false);
+                setIsReceivingAudio(false);
+
+                setTimeout(() => {
+                    try {
+                        recognition.start();
+                    } catch (err) {
+                        console.error("Failed to restart recognition:", err);
+                        setIsListening(false);
+                        setError(errorMessage);
+                        if (onErrorRef.current) onErrorRef.current(errorMessage);
+                    }
+                }, 300);
+                return;
+            }
+
+            setIsListening(false);
+            setIsReceivingAudio(false);
+
             setError(errorMessage);
-            if (onError) onError(errorMessage);
+            if (onErrorRef.current) onErrorRef.current(errorMessage);
         };
 
         recognition.onresult = (event: any) => {
@@ -75,9 +108,8 @@ export function useVoiceRecognition({ onResult, onError }: UseVoiceRecognitionPr
             const currentTranscript = finalTranscript || interimTranscript;
             setTranscript(currentTranscript);
 
-            // Only trigger onResult for final results
-            if (finalTranscript && onResult) {
-                onResult(finalTranscript);
+            if (finalTranscript && onResultRef.current) {
+                onResultRef.current(finalTranscript);
             }
         };
 
@@ -88,16 +120,30 @@ export function useVoiceRecognition({ onResult, onError }: UseVoiceRecognitionPr
                 recognitionRef.current.stop();
             }
         };
-    }, [onResult, onError]);
+    }, []); // Empty dependency array - only initialize once
 
-    const startListening = useCallback(() => {
+    const startListening = useCallback(async () => {
         if (recognitionRef.current && !isListening) {
             try {
+                // Explicitly request microphone access to trigger prompt/check permission
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                // If successful, we stop the stream immediately as SpeechRecognition handles its own stream
+                stream.getTracks().forEach(track => track.stop());
+
+                retryCountRef.current = 0;
                 setTranscript("");
                 setError(null);
                 recognitionRef.current.start();
-            } catch (err) {
-                console.error("Failed to start recognition:", err);
+            } catch (err: any) {
+                console.error("Microphone permission failed:", err);
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    setError("not-allowed");
+                    if (onErrorRef.current) onErrorRef.current("not-allowed");
+                } else {
+                    setError(err.message || "Microphone error");
+                    if (onErrorRef.current) onErrorRef.current(err.message || "Microphone error");
+                }
             }
         }
     }, [isListening]);

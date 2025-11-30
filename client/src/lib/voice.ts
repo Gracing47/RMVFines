@@ -45,7 +45,7 @@ declare global {
   }
 }
 
-export function speak(text: string) {
+export function speak(text: string, onEnd?: () => void) {
   if ('speechSynthesis' in window) {
     // Cancel any current speech
     window.speechSynthesis.cancel();
@@ -53,14 +53,68 @@ export function speak(text: string) {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'de-DE';
 
-    // Try to select a German voice
-    const voices = window.speechSynthesis.getVoices();
-    const germanVoice = voices.find(voice => voice.lang.includes('de'));
-    if (germanVoice) {
-      utterance.voice = germanVoice;
+    if (onEnd) {
+      utterance.onend = onEnd;
     }
 
-    window.speechSynthesis.speak(utterance);
+    // Function to select the best German voice
+    const selectBestVoice = () => {
+      const voices = window.speechSynthesis.getVoices();
+
+      // Priority order for better quality voices:
+      // 1. Google voices (usually highest quality)
+      // 2. Microsoft voices (good quality)
+      // 3. Any other German voice
+      // 4. Fallback to any voice
+
+      const googleVoice = voices.find(voice =>
+        voice.lang.includes('de') && voice.name.includes('Google')
+      );
+
+      const microsoftVoice = voices.find(voice =>
+        voice.lang.includes('de') && (voice.name.includes('Microsoft') || voice.name.includes('Hedda'))
+      );
+
+      const anyGermanVoice = voices.find(voice =>
+        voice.lang.includes('de')
+      );
+
+      return googleVoice || microsoftVoice || anyGermanVoice || voices[0];
+    };
+
+    // Function to speak with the best voice
+    const speakWithVoice = () => {
+      const bestVoice = selectBestVoice();
+      if (bestVoice) {
+        utterance.voice = bestVoice;
+      }
+
+      // Optimize speech parameters for more natural sound
+      utterance.rate = 0.95;  // Slightly slower than default (1.0) for clarity
+      utterance.pitch = 1.0;  // Normal pitch
+      utterance.volume = 0.9; // Slightly lower volume for comfort
+
+      window.speechSynthesis.speak(utterance);
+    };
+
+    // Ensure voices are loaded before speaking
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      speakWithVoice();
+    } else {
+      // Wait for voices to load
+      window.speechSynthesis.onvoiceschanged = () => {
+        speakWithVoice();
+        window.speechSynthesis.onvoiceschanged = null; // Clean up
+      };
+    }
+    if (onEnd) onEnd();
+  }
+}
+
+export function cancelSpeech() {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
   }
 }
 
@@ -104,6 +158,29 @@ export function parseIntent(text: string): { from?: string; to?: string } {
 
     if (["hier", "mir", "meinem standort", "aktuellem standort", "meiner position"].some(k => from?.includes(k))) {
       from = "CURRENT_LOCATION";
+    }
+
+    return { from, to };
+  }
+
+  // Pattern 3: "A nach B" (implicit from) - e.g. "Mainz nach Wiesbaden"
+  // Must be checked before the fallback "nach B"
+  const patternImplicit = /^(.+?)\s+(?:nach|zu)\s+(.+)/i;
+  const matchImplicit = lowerText.match(patternImplicit);
+
+  if (matchImplicit) {
+    from = matchImplicit[1].trim();
+    to = matchImplicit[2].trim();
+
+    // Filter out common prefixes that aren't stations
+    const ignorePrefixes = ["ich will", "ich möchte", "bitte", "fahre", "verbindung", "suche"];
+    if (ignorePrefixes.some(p => from?.startsWith(p))) {
+      // If it starts with "ich will", we ignore the "ich will" part? 
+      // For now, if it looks like a command, we might just skip this pattern or treat the rest as "to"
+      // But "Ich will" is not a station.
+      // Maybe we can rely on the fact that "Ich will" is unlikely to be a station name user cares about, or we just accept it.
+      // Better: check if it starts with "ich möchte" or "ich will" and strip it.
+      return { to };
     }
 
     return { from, to };
