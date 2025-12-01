@@ -1,12 +1,12 @@
-import { useState, useCallback, useEffect } from "react";
-import { parseIntent, speak, cancelSpeech } from "@/lib/voice";
-import { searchLocation, searchTrips, searchNearbyStations, Trip } from "@/lib/rmv-api";
-import { Mic, Loader2, AlertCircle, MapPin, Navigation, ArrowRight, Accessibility, Keyboard, X } from "lucide-react";
-import { ConnectionCard } from "./connection-card";
+import { useState, useEffect, useCallback } from "react";
+import { useVoiceRecognition } from "@/hooks/use-voice-recognition";
+import { speak, cancelSpeech, parseIntent } from "@/lib/voice";
+import { searchLocation, searchNearbyStations, searchTrips, Trip } from "@/lib/rmv-api";
 import { Button } from "@/components/ui/button";
+import { Mic, MapPin, Loader2, AlertCircle, ArrowRight, Keyboard, X, Accessibility } from "lucide-react";
+import { ConnectionCard } from "@/components/connection-card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { useVoiceRecognition } from "@/hooks/use-voice-recognition";
 import { cn } from "@/lib/utils";
 
 export function VoiceInterface() {
@@ -17,8 +17,8 @@ export function VoiceInterface() {
   const [manualInput, setManualInput] = useState("");
   const [isWheelchair, setIsWheelchair] = useState(false);
   const [showInput, setShowInput] = useState(false);
-
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [permissionDeniedType, setPermissionDeniedType] = useState<"microphone" | "geolocation" | null>(null);
 
   const handleVoiceResult = useCallback(async (text: string) => {
     setStatus("processing");
@@ -42,26 +42,37 @@ export function VoiceInterface() {
         setIsSpeaking(true);
         speak("Ich ermittle deinen Standort...", () => setIsSpeaking(false));
 
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 10000
+            });
           });
-        });
 
-        const nearbyStations = await searchNearbyStations(
-          position.coords.latitude,
-          position.coords.longitude
-        );
+          const nearbyStations = await searchNearbyStations(
+            position.coords.latitude,
+            position.coords.longitude
+          );
 
-        if (nearbyStations.length === 0) {
-          throw new Error("Keine Haltestelle in der Nähe gefunden.");
+          if (nearbyStations.length === 0) {
+            throw new Error("Keine Haltestelle in der Nähe gefunden.");
+          }
+
+          start = nearbyStations[0];
+          fromQuery = "Deinem Standort";
+          setIsSpeaking(true);
+          speak(`Nächste Haltestelle: ${start.name}`, () => setIsSpeaking(false));
+        } catch (geoErr: any) {
+          if (geoErr.code === 1) { // PERMISSION_DENIED
+            setPermissionDeniedType('geolocation');
+            setIsSpeaking(true);
+            speak("Ich brauche deinen Standort. Bitte erlaube den Zugriff zusätzlich oben im Browser.", () => setIsSpeaking(false));
+            setStatus("idle"); // Reset status so UI doesn't show loading
+            return;
+          }
+          throw new Error("Standort konnte nicht ermittelt werden.");
         }
-
-        start = nearbyStations[0];
-        fromQuery = "Deinem Standort";
-        setIsSpeaking(true);
-        speak(`Nächste Haltestelle: ${start.name}`, () => setIsSpeaking(false));
       } else {
         const startLocations = await searchLocation(fromQuery);
         if (startLocations.length === 0) throw new Error(`Startort "${fromQuery}" nicht gefunden.`);
@@ -121,6 +132,14 @@ export function VoiceInterface() {
   } = useVoiceRecognition({
     onResult: handleVoiceResult,
     onError: (err) => {
+      if (err === 'not-allowed') {
+        setPermissionDeniedType('microphone');
+        setIsSpeaking(true);
+        speak("Ich brauche dein Mikrofon. Bitte erlaube den Zugriff zusätzlich oben im Browser.", () => setIsSpeaking(false));
+        setStatus("idle");
+        return;
+      }
+
       setStatus("error");
       setShowInput(true); // Auto-show input on error
       let msg = "Ein Fehler ist aufgetreten.";
@@ -129,9 +148,6 @@ export function VoiceInterface() {
       if (err === 'no-speech') {
         msg = "Ich habe nichts gehört. Bitte sprich lauter.";
         speakMsg = "Ich habe nichts gehört.";
-      } else if (err === 'not-allowed') {
-        msg = "Mikrofon-Zugriff verweigert.";
-        speakMsg = "Ich darf dein Mikrofon nicht benutzen.";
       } else if (err === 'network') {
         msg = "Netzwerkfehler. Bitte überprüfe deine Internetverbindung.";
         speakMsg = "Ich habe keine Verbindung zum Internet.";
@@ -151,6 +167,11 @@ export function VoiceInterface() {
   }, [transcript]);
 
   const toggleListening = () => {
+    // Reset permission state if user tries again
+    if (permissionDeniedType) {
+      setPermissionDeniedType(null);
+    }
+
     if (isSpeaking) {
       cancelSpeech();
       setIsSpeaking(false);
@@ -175,6 +196,7 @@ export function VoiceInterface() {
     resetVoice();
     setManualInput("");
     setShowInput(false);
+    setPermissionDeniedType(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -186,6 +208,57 @@ export function VoiceInterface() {
 
   return (
     <div className="flex flex-col items-center w-full max-w-3xl mx-auto min-h-[85vh] py-8 px-4 relative overflow-hidden">
+
+      {/* Permission Dialog Overlay */}
+      {permissionDeniedType && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-sm w-full border border-slate-100 text-center transform scale-100 animate-in zoom-in-95 duration-300">
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+              {permissionDeniedType === 'microphone' ? <Mic className="h-8 w-8" /> : <MapPin className="h-8 w-8" />}
+            </div>
+            <h3 className="text-xl font-bold text-slate-900 mb-2">
+              Zugriff erforderlich
+            </h3>
+            <p className="text-slate-600 mb-6 leading-relaxed">
+              {permissionDeniedType === 'microphone'
+                ? "Damit ich dich verstehen kann, benötige ich Zugriff auf dein Mikrofon."
+                : "Damit ich Verbindungen von deinem Standort finden kann, benötige ich Zugriff auf deinen Standort."
+              }
+            </p>
+
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6 text-sm text-slate-500 text-left flex items-start gap-3">
+              <div className="mt-0.5">🔒</div>
+              <div>
+                Tippe auf das <strong>Schloss-Symbol</strong> in der Adressleiste und aktiviere den Zugriff <strong>zusätzlich</strong>.
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setPermissionDeniedType(null)}
+              >
+                Abbrechen
+              </Button>
+              <Button
+                className="flex-1 bg-primary hover:bg-primary/90 text-white"
+                onClick={() => {
+                  setPermissionDeniedType(null);
+                  if (permissionDeniedType === 'microphone') {
+                    toggleListening();
+                  } else {
+                    // Retry last command? For now just close dialog and let user try again
+                    // Ideally we would retry the last action, but simple is better here.
+                  }
+                }}
+              >
+                Erneut versuchen
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header / Brand Area */}
       <div className="w-full flex justify-between items-center mb-8 z-10">
