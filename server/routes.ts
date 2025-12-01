@@ -1,12 +1,23 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const { createDbHafas } = require("db-hafas");
 
-// Initialize DB HAFAS Client
-// We use a generic user agent as required by the library
-const client = createDbHafas("rmv-voice-app-" + Math.random().toString(36).substring(7));
+// Official Deutsche Bahn API
+const DB_API_BASE = "https://apis.deutschebahn.com";
+const DB_CLIENT_ID = process.env.DB_CLIENT_ID;
+const DB_API_KEY = process.env.DB_API_KEY;
+
+if (!DB_CLIENT_ID || !DB_API_KEY) {
+  console.warn("WARNING: DB_CLIENT_ID or DB_API_KEY is not set in environment variables.");
+}
+
+// Helper to create headers for DB API
+function getDBHeaders() {
+  return {
+    "DB-Client-Id": DB_CLIENT_ID || "",
+    "DB-Api-Key": DB_API_KEY || "",
+    "Accept": "application/json",
+  };
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
@@ -18,17 +29,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Query parameter is required" });
       }
 
-      // DB HAFAS: client.locations(name, [opt])
-      const locations = await client.locations(query, { results: 10 });
+      // DB API: Fahrplan-Free endpoint for location search
+      const response = await fetch(
+        `${DB_API_BASE}/fahrplan-plus/v1/location/${encodeURIComponent(query)}`,
+        { headers: getDBHeaders() }
+      );
 
-      // Normalize response for frontend
-      const results = locations
-        .filter(loc => loc.type === 'station' || loc.type === 'stop')
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`DB API Error: ${response.status}`, errorText);
+        throw new Error(`DB API Error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      // Normalize response - DB API returns array directly
+      const results = (Array.isArray(data) ? data : [data])
+        .filter((loc: any) => loc.type === 'station' || loc.type === 'ST')
+        .slice(0, 10)
         .map((loc: any) => ({
-          id: loc.id,
+          id: loc.id || loc.extId,
           name: loc.name,
-          lat: loc.location?.latitude,
-          lon: loc.location?.longitude,
+          lat: loc.lat || loc.latitude,
+          lon: loc.lon || loc.longitude,
         }));
 
       res.json(results);
@@ -46,24 +69,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "lat and lon parameters are required" });
       }
 
-      const latitude = parseFloat(lat as string);
-      const longitude = parseFloat(lon as string);
-      const distance = parseInt((r as string) || "1000", 10);
-
-      // DB HAFAS: client.nearby({ latitude, longitude }, [opt])
-      const nearby = await client.nearby(
-        { latitude, longitude },
-        { distance, results: 10 }
+      // DB API: Nearby stops
+      const response = await fetch(
+        `${DB_API_BASE}/fahrplan-plus/v1/location/nearby?lat=${lat}&lon=${lon}`,
+        { headers: getDBHeaders() }
       );
 
-      const results = nearby
-        .filter(loc => loc.type === 'station' || loc.type === 'stop')
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`DB API Error: ${response.status}`, errorText);
+        throw new Error(`DB API Error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      const results = (Array.isArray(data) ? data : [data])
+        .filter((loc: any) => loc.type === 'station' || loc.type === 'ST')
+        .slice(0, 10)
         .map((loc: any) => ({
-          id: loc.id,
+          id: loc.id || loc.extId,
           name: loc.name,
-          lat: loc.location?.latitude,
-          lon: loc.location?.longitude,
-          distance: loc.distance, // db-hafas returns distance in meters
+          lat: loc.lat || loc.latitude,
+          lon: loc.lon || loc.longitude,
+          distance: loc.dist || loc.distance,
         }));
 
       res.json(results);
@@ -82,57 +110,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "originId and destId are required" });
       }
 
-      const options: any = {
-        results: 3,
-        transfers: -1, // unlimited
-      };
+      // DB API: Journey search
+      let url = `${DB_API_BASE}/fahrplan-plus/v1/journey?originId=${encodeURIComponent(originId as string)}&destId=${encodeURIComponent(destId as string)}`;
 
-      // Apply Accessibility Profiles (DB HAFAS supports accessibility options)
-      if (profile === "wheelchair") {
-        options.accessibility = 'complete';
-      } else if (profile === "mobility_impaired") {
-        options.accessibility = 'partial';
+      const response = await fetch(url, { headers: getDBHeaders() });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`DB API Error: ${response.status}`, errorText);
+        throw new Error(`DB API Error: ${response.status} ${response.statusText}`);
       }
 
-      // DB HAFAS: client.journeys(from, to, [opt])
-      const journeys = await client.journeys(originId as string, destId as string, options);
+      const data = await response.json();
 
-      if (!journeys.journeys) {
+      if (!data.Trip || data.Trip.length === 0) {
         return res.json([]);
       }
 
-      // Map DB HAFAS format to our frontend format
-      const trips = journeys.journeys.map((journey: any) => {
-        const legs = journey.legs.map((leg: any) => {
-          return {
-            Origin: {
-              name: leg.origin.name,
-              time: leg.departure, // ISO string
-              date: leg.departure.split('T')[0],
-              track: leg.platform,
-              rtTime: leg.plannedDeparture !== leg.departure ? leg.departure : undefined, // Logic for delay
-              // DB HAFAS gives specific delay fields, but we map simply here
-            },
-            Destination: {
-              name: leg.destination.name,
-              time: leg.arrival,
-              date: leg.arrival.split('T')[0],
-              track: leg.arrivalPlatform,
-            },
-            name: leg.line?.name || leg.line?.productName || "Fußweg", // Line name or "Walk"
-            type: leg.mode, // "train", "bus", "walking"
-          };
-        });
-
-        // Filter out walking-only legs at start/end if desired, but for now keep all
+      // Map DB API format to our frontend format
+      const trips = (Array.isArray(data.Trip) ? data.Trip : [data.Trip]).slice(0, 3).map((trip: any) => {
+        const legs = Array.isArray(trip.LegList?.Leg) ? trip.LegList.Leg : [trip.LegList?.Leg].filter(Boolean);
 
         return {
-          legs,
-          duration: "PT" + Math.floor((new Date(journey.arrival).getTime() - new Date(journey.departure).getTime()) / 60000) + "M", // Simple duration format for frontend
-          startTime: journey.departure,
-          startDate: journey.departure.split('T')[0],
-          endTime: journey.arrival,
-          endDate: journey.arrival.split('T')[0],
+          legs: legs.map((leg: any) => ({
+            Origin: {
+              name: leg.Origin?.name || "",
+              time: leg.Origin?.time || "",
+              date: leg.Origin?.date || "",
+              track: leg.Origin?.track,
+            },
+            Destination: {
+              name: leg.Destination?.name || "",
+              time: leg.Destination?.time || "",
+              date: leg.Destination?.date || "",
+              track: leg.Destination?.track,
+            },
+            name: leg.name || "Transfer",
+            type: leg.type || "",
+          })),
+          duration: trip.duration || "",
+          startTime: legs[0]?.Origin?.time || "",
+          startDate: legs[0]?.Origin?.date || "",
+          endTime: legs[legs.length - 1]?.Destination?.time || "",
+          endDate: legs[legs.length - 1]?.Destination?.date || "",
         };
       });
 
