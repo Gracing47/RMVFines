@@ -2,14 +2,18 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 
-const RMV_API_KEY = process.env.RMV_API_KEY || "765abdb9-e12c-46a0-84fa-2349bc29fb5b";
-const RMV_BASE_URL = "https://www.rmv.de/hapi";
+const RMV_API_KEY = process.env.RMV_API_KEY;
+const RMV_BASE_URL = process.env.RMV_BASE_URL || "https://www.rmv.de/hapi";
+
+if (!RMV_API_KEY) {
+  console.warn("WARNING: RMV_API_KEY is not set in environment variables.");
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Helper to fetch from RMV API
   async function fetchRMV(endpoint: string, params: Record<string, string>) {
     const searchParams = new URLSearchParams({
-      accessId: RMV_API_KEY,
+      accessId: RMV_API_KEY || "",
       format: "json",
       ...params,
     });
