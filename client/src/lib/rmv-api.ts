@@ -16,6 +16,7 @@ export interface Trip {
   startDate: string;
   endTime: string;
   endDate: string;
+  price?: number;
 }
 
 export interface Leg {
@@ -49,6 +50,7 @@ export interface Leg {
   };
   name: string; // e.g., "S-Bahn S8"
   type: string; // "JNY"
+  transferDuration?: number;
   Messages?: {
     Message: {
       text: string;

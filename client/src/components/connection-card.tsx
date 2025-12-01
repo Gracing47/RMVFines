@@ -57,6 +57,17 @@ export function ConnectionCard({ trip, index }: ConnectionCardProps) {
   const transportName = firstLeg.name.replace(/\s+/g, ' ');
   const transfers = trip.legs.length - 1;
 
+  // Helper for Platform Badge
+  const PlatformBadge = ({ track, type }: { track?: string, type: string }) => {
+    if (!track) return null;
+    const label = type.includes("Bus") ? "Bstg." : "Gl.";
+    return (
+      <span className="bg-[#13182C] text-white text-[11px] font-bold px-2 py-1 rounded-sm ml-auto shrink-0 shadow-sm">
+        {label} {track}
+      </span>
+    );
+  };
+
   return (
     <div
       className="animate-in slide-in-from-bottom-4 fade-in duration-500"
@@ -133,50 +144,63 @@ export function ConnectionCard({ trip, index }: ConnectionCardProps) {
 
           <CollapsibleContent>
             <div className="bg-slate-50/50 border-t border-slate-100 p-5">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-6">
                 Reiseverlauf
               </h4>
 
               {/* Timeline */}
-              <div className="relative pl-4 space-y-0">
+              <div className="relative pl-2 space-y-0">
                 {/* Vertical Line */}
-                <div className="absolute left-[19px] top-2 bottom-2 w-0.5 bg-slate-200"></div>
+                <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-slate-300"></div>
 
                 {legs.map((leg, i) => (
-                  <div key={i} className="relative pb-6 last:pb-0">
-                    {/* Origin Stop */}
-                    <div className="flex gap-4 relative">
-                      <div className="w-2.5 h-2.5 rounded-full bg-white border-2 border-slate-400 z-10 mt-1.5 shrink-0"></div>
-                      <div className="flex-1">
-                        <div className="flex justify-between items-baseline">
-                          <span className="font-semibold text-slate-900">{leg.Origin.name}</span>
-                          <span className="font-mono text-sm text-slate-500">{formatTime(leg.Origin.time)}</span>
-                        </div>
+                  <div key={i} className="relative pb-8 last:pb-0">
 
-                        {/* Transport Segment */}
-                        <div className="mt-2 mb-4 p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={cn("text-xs font-bold px-2 py-0.5 rounded border flex items-center gap-1.5", getTransportColor(leg.name))}>
-                              {getTransportIcon(leg.name)}
-                              {leg.name}
-                            </span>
-                            <span className="text-xs text-slate-500">
-                              nach {leg.Destination.name}
-                            </span>
-                          </div>
+                    {/* ORIGIN OF LEG */}
+                    <div className="flex gap-4 relative items-center group/stop">
+                      <div className="w-5 h-5 rounded-full bg-white border-[3px] border-slate-700 z-10 shrink-0 shadow-sm group-hover/stop:scale-110 transition-transform"></div>
+                      <div className="flex-1 flex items-center justify-between bg-white p-2 rounded-lg border border-slate-100 shadow-sm">
+                        <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
+                          <span className="font-bold text-slate-900 w-14">{formatTime(leg.Origin.time)}</span>
+                          <span className="font-semibold text-slate-800">{leg.Origin.name}</span>
                         </div>
+                        <PlatformBadge track={leg.Origin.track} type={leg.name} />
                       </div>
                     </div>
 
-                    {/* Destination Stop (only for last leg) */}
-                    {i === legs.length - 1 && (
-                      <div className="flex gap-4 relative mt-2">
-                        <div className="w-2.5 h-2.5 rounded-full bg-slate-900 border-2 border-slate-900 z-10 mt-1.5 shrink-0"></div>
-                        <div className="flex-1">
-                          <div className="flex justify-between items-baseline">
-                            <span className="font-bold text-slate-900">{leg.Destination.name}</span>
-                            <span className="font-mono text-sm text-slate-500">{formatTime(leg.Destination.time)}</span>
-                          </div>
+                    {/* TRANSPORT SEGMENT */}
+                    <div className="ml-[19px] border-l-2 border-slate-300 pl-6 py-4 my-1 flex flex-col justify-center">
+                      <div className="flex items-center gap-3">
+                        <span className={cn("text-xs font-bold px-2 py-1 rounded border flex items-center gap-1.5 shadow-sm", getTransportColor(leg.name))}>
+                          {getTransportIcon(leg.name)}
+                          {leg.name}
+                        </span>
+                        <span className="text-xs text-slate-500 font-medium">
+                          nach {leg.Destination.name}
+                        </span>
+                      </div>
+                      {/* Stopovers could go here */}
+                    </div>
+
+                    {/* DESTINATION OF LEG */}
+                    <div className="flex gap-4 relative items-center group/stop">
+                      <div className="w-5 h-5 rounded-full bg-slate-700 border-[3px] border-slate-700 z-10 shrink-0 shadow-sm group-hover/stop:scale-110 transition-transform"></div>
+                      <div className="flex-1 flex items-center justify-between bg-white p-2 rounded-lg border border-slate-100 shadow-sm">
+                        <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
+                          <span className="font-bold text-slate-900 w-14">{formatTime(leg.Destination.time)}</span>
+                          <span className="font-semibold text-slate-800">{leg.Destination.name}</span>
+                        </div>
+                        <PlatformBadge track={leg.Destination.track} type={leg.name} />
+                      </div>
+                    </div>
+
+                    {/* TRANSFER INFO (if not last leg) */}
+                    {i < legs.length - 1 && (
+                      <div className="ml-[19px] border-l-2 border-dashed border-slate-300 pl-6 py-3 my-1">
+                        <div className="text-xs font-medium text-slate-500 flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+                          {/* @ts-ignore - transferDuration exists in API response but not yet in interface */}
+                          {leg.transferDuration ? `${leg.transferDuration} Min. Umstieg` : "Umstieg"}
                         </div>
                       </div>
                     )}
@@ -184,8 +208,9 @@ export function ConnectionCard({ trip, index }: ConnectionCardProps) {
                 ))}
               </div>
 
-              <Button className="w-full mt-6 bg-primary hover:bg-primary/90 text-white font-medium h-12 shadow-sm">
-                Ticket auswählen ab 4,90 €
+              <Button className="w-full mt-8 bg-primary hover:bg-primary/90 text-white font-medium h-12 shadow-sm rounded-xl">
+                {/* @ts-ignore - price exists in API response but not yet in interface */}
+                Ticket auswählen ab {trip.price ? trip.price.toFixed(2).replace('.', ',') : '4,90'} €
               </Button>
             </div>
           </CollapsibleContent>
