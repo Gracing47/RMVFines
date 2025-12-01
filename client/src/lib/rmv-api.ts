@@ -51,6 +51,15 @@ export interface Leg {
   name: string; // e.g., "S-Bahn S8"
   type: string; // "JNY"
   transferDuration?: number;
+  distance?: number; // Distance in meters (for walking)
+  duration?: number; // Duration in minutes
+  walking?: boolean; // Is this a walking leg?
+  stopovers?: {
+    name: string;
+    arrival?: string;
+    departure?: string;
+    track?: string;
+  }[];
   Messages?: {
     Message: {
       text: string;

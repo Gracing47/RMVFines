@@ -169,17 +169,57 @@ export function ConnectionCard({ trip, index }: ConnectionCardProps) {
                     </div>
 
                     {/* TRANSPORT SEGMENT */}
-                    <div className="ml-[19px] border-l-2 border-slate-300 pl-6 py-4 my-1 flex flex-col justify-center">
+                    <div className="ml-[19px] border-l-2 border-slate-300 pl-6 py-4 my-1 flex flex-col gap-3">
                       <div className="flex items-center gap-3">
                         <span className={cn("text-xs font-bold px-2 py-1 rounded border flex items-center gap-1.5 shadow-sm", getTransportColor(leg.name))}>
                           {getTransportIcon(leg.name)}
                           {leg.name}
                         </span>
                         <span className="text-xs text-slate-500 font-medium">
-                          nach {leg.Destination.name}
+                          {leg.walking ? (
+                            <>
+                              {leg.duration && `${leg.duration} Min.`}
+                              {leg.distance && ` • ${Math.round(leg.distance)}m`}
+                              {` nach ${leg.Destination.name}`}
+                            </>
+                          ) : (
+                            `nach ${leg.Destination.name}`
+                          )}
                         </span>
                       </div>
-                      {/* Stopovers could go here */}
+
+                      {/* Stopovers - Only show for non-walking legs */}
+                      {!leg.walking && leg.stopovers && leg.stopovers.length > 0 && (
+                        <div className="space-y-1.5 mt-2">
+                          <button
+                            className="text-[10px] uppercase font-bold text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const target = e.currentTarget.nextElementSibling;
+                              if (target) {
+                                target.classList.toggle('hidden');
+                              }
+                            }}
+                          >
+                            <ChevronDown className="h-3 w-3" />
+                            {leg.stopovers.length} Zwischenhalt{leg.stopovers.length > 1 ? 'e' : ''}
+                          </button>
+                          <div className="hidden space-y-1">
+                            {leg.stopovers.map((stop, stopIdx) => (
+                              <div key={stopIdx} className="flex items-center gap-2 text-xs text-slate-500 pl-4">
+                                <div className="w-1 h-1 rounded-full bg-slate-300"></div>
+                                <span className="font-medium w-12">{stop.departure || stop.arrival}</span>
+                                <span>{stop.name}</span>
+                                {stop.track && (
+                                  <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded ml-auto">
+                                    {leg.name.includes("Bus") ? "Bstg." : "Gl."} {stop.track}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* DESTINATION OF LEG */}

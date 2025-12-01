@@ -131,6 +131,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           previousArrival = leg.arrival ? new Date(leg.arrival) : null;
 
+          // Calculate leg duration
+          const legDuration = leg.departure && leg.arrival
+            ? Math.floor((new Date(leg.arrival).getTime() - new Date(leg.departure).getTime()) / 60000)
+            : undefined;
+
           return {
             Origin: {
               name: leg.origin.name,
@@ -148,6 +153,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             name: leg.line?.name || (leg.walking ? "Fußweg" : "Zug"),
             type: leg.line?.mode || (leg.walking ? "walking" : "train"),
             direction: leg.direction,
+            walking: leg.walking || false,
+            distance: leg.distance, // Distance in meters
+            duration: legDuration, // Duration in minutes
             transferDuration: index > 0 ? transferDuration : undefined, // Transfer time before this leg
             stopovers: leg.stopovers ? leg.stopovers.map((stop: any) => ({
               name: stop.stop?.name,

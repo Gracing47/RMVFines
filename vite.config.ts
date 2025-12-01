@@ -37,6 +37,7 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    chunkSizeWarningLimit: 150, // Suppress warning for CSS bundle (15.78 kB gzipped is excellent)
   },
   server: {
     host: "0.0.0.0",
