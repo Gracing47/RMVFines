@@ -78,7 +78,10 @@ export function VoiceInterface() {
       setRouteInfo({ from: start.name, to: dest.name });
 
       // Step C: Find Trips
-      const foundTrips = await searchTrips(start.id, dest.id, isWheelchair ? 'wheelchair' : 'standard');
+      // Use extracted time or default to now
+      const searchTime = intent.time || new Date();
+
+      const foundTrips = await searchTrips(start.id, dest.id, isWheelchair ? 'wheelchair' : 'standard', searchTime);
       if (foundTrips.length === 0) {
         throw new Error("Keine Verbindungen gefunden.");
       }

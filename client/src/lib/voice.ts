@@ -118,8 +118,40 @@ export function cancelSpeech() {
   }
 }
 
-export function parseIntent(text: string): { from?: string; to?: string } {
-  const lowerText = text.toLowerCase();
+export function parseIntent(text: string): { from?: string; to?: string; time?: Date } {
+  let cleanText = text.toLowerCase();
+  let time: Date | undefined;
+
+  // 1. Parse relative time "in X minutes"
+  const relativeTimeMatch = cleanText.match(/in\s+(\d+)\s+min(?:uten)?/i);
+  if (relativeTimeMatch) {
+    const minutes = parseInt(relativeTimeMatch[1], 10);
+    time = new Date();
+    time.setMinutes(time.getMinutes() + minutes);
+    // Remove the time part from text so it doesn't mess up location parsing
+    cleanText = cleanText.replace(relativeTimeMatch[0], "").trim();
+  }
+
+  // 2. Parse absolute time "um HH:MM" or "um HH Uhr"
+  const absoluteTimeMatch = cleanText.match(/um\s+(\d{1,2})(?::(\d{2}))?(?:\s*uhr)?/i);
+  if (absoluteTimeMatch) {
+    const hours = parseInt(absoluteTimeMatch[1], 10);
+    const minutes = absoluteTimeMatch[2] ? parseInt(absoluteTimeMatch[2], 10) : 0;
+
+    time = new Date();
+    time.setHours(hours);
+    time.setMinutes(minutes);
+    time.setSeconds(0);
+
+    // If the resulting time is significantly in the past (e.g. > 2 hours ago), 
+    // the user probably means tomorrow (e.g. at 23:00 saying "um 8 Uhr")
+    // But for simplicity, let's assume today for now unless explicitly stated otherwise.
+
+    cleanText = cleanText.replace(absoluteTimeMatch[0], "").trim();
+  }
+
+  // Use cleanText for location parsing
+  const lowerText = cleanText;
   let from: string | undefined, to: string | undefined;
 
   // Pattern 0: "hier nach B" oder "von hier nach B" - prioritize this pattern
@@ -129,7 +161,7 @@ export function parseIntent(text: string): { from?: string; to?: string } {
   if (matchHier) {
     from = "CURRENT_LOCATION";
     to = matchHier[1].trim();
-    return { from, to };
+    return { from, to, time };
   }
 
   // Pattern 1: "von A nach B"
@@ -145,7 +177,7 @@ export function parseIntent(text: string): { from?: string; to?: string } {
       from = "CURRENT_LOCATION";
     }
 
-    return { from, to };
+    return { from, to, time };
   }
 
   // Pattern 2: "nach B von A"
@@ -160,7 +192,7 @@ export function parseIntent(text: string): { from?: string; to?: string } {
       from = "CURRENT_LOCATION";
     }
 
-    return { from, to };
+    return { from, to, time };
   }
 
   // Pattern 3: "A nach B" (implicit from) - e.g. "Mainz nach Wiesbaden"
@@ -175,15 +207,10 @@ export function parseIntent(text: string): { from?: string; to?: string } {
     // Filter out common prefixes that aren't stations
     const ignorePrefixes = ["ich will", "ich möchte", "bitte", "fahre", "verbindung", "suche"];
     if (ignorePrefixes.some(p => from?.startsWith(p))) {
-      // If it starts with "ich will", we ignore the "ich will" part? 
-      // For now, if it looks like a command, we might just skip this pattern or treat the rest as "to"
-      // But "Ich will" is not a station.
-      // Maybe we can rely on the fact that "Ich will" is unlikely to be a station name user cares about, or we just accept it.
-      // Better: check if it starts with "ich möchte" or "ich will" and strip it.
-      return { to };
+      return { to, time };
     }
 
-    return { from, to };
+    return { from, to, time };
   }
 
   // Fallback: "Ich will nach B" (assume current location or ask for from? For now just return to)
@@ -192,8 +219,8 @@ export function parseIntent(text: string): { from?: string; to?: string } {
 
   if (match3) {
     to = match3[1].trim();
-    return { to };
+    return { to, time };
   }
 
-  return {};
+  return { time };
 }

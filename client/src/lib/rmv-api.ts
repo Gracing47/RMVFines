@@ -145,10 +145,16 @@ export async function searchNearbyStations(lat: number, lon: number): Promise<St
   }
 }
 
-export async function searchTrips(originId: string, destId: string, profile: 'standard' | 'wheelchair' | 'mobility_impaired' = 'standard'): Promise<Trip[]> {
+export async function searchTrips(originId: string, destId: string, profile: 'standard' | 'wheelchair' | 'mobility_impaired' = 'standard', time?: Date): Promise<Trip[]> {
   try {
     // Defaulting to 'standard' now, as profiles will be handled separately
-    const res = await fetch(`/api/trips?originId=${encodeURIComponent(originId)}&destId=${encodeURIComponent(destId)}&profile=${profile}`);
+    let url = `/api/trips?originId=${encodeURIComponent(originId)}&destId=${encodeURIComponent(destId)}&profile=${profile}`;
+
+    if (time) {
+      url += `&departure=${encodeURIComponent(time.toISOString())}`;
+    }
+
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`API Error: ${res.statusText}`);
     return await res.json();
   } catch (error) {

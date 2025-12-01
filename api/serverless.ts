@@ -84,7 +84,7 @@ app.get("/api/locations/nearby", async (req, res) => {
 // 3. Search Trips (Routing)
 app.get("/api/trips", async (req, res) => {
     try {
-        const { originId, destId, profile } = req.query;
+        const { originId, destId, profile, departure } = req.query;
 
         if (!originId || !destId) {
             return res.status(400).json({ message: "originId and destId are required" });
@@ -94,6 +94,10 @@ app.get("/api/trips", async (req, res) => {
 
         if (profile === "wheelchair") {
             // url += '&accessibility=complete'; 
+        }
+
+        if (departure) {
+            url += `&departure=${encodeURIComponent(departure as string)}`;
         }
 
         const response = await fetch(url);
