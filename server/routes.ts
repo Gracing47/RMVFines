@@ -6,7 +6,7 @@ const { createDbHafas } = require("db-hafas");
 
 // Initialize DB HAFAS Client
 // We use a generic user agent as required by the library
-const client = createDbHafas("rmv-voice-app");
+const client = createDbHafas("rmv-voice-app-" + Math.random().toString(36).substring(7));
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
