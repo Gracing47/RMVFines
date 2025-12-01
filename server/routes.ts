@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { createClient } from "db-hafas";
+import createClient from "db-hafas";
 
 // Initialize DB HAFAS Client
 // We use a generic user agent as required by the library

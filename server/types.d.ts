@@ -1,3 +1,4 @@
 declare module 'db-hafas' {
-    export function createClient(userAgent: string): any;
+    const createClient: (userAgent: string) => any;
+    export default createClient;
 }
