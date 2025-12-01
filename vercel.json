@@ -1,4 +1,11 @@
 {
+    "buildCommand": "npm run build",
+    "outputDirectory": "dist/public",
+    "functions": {
+        "api/serverless.ts": {
+            "runtime": "nodejs20.x"
+        }
+    },
     "rewrites": [
         {
             "source": "/api/(.*)",
