@@ -1,39 +1,12 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { createClient } from "db-hafas";
 
-const RMV_API_KEY = process.env.RMV_API_KEY;
-const RMV_BASE_URL = process.env.RMV_BASE_URL || "https://www.rmv.de/hapi";
-
-if (!RMV_API_KEY) {
-  console.warn("WARNING: RMV_API_KEY is not set in environment variables.");
-}
+// Initialize DB HAFAS Client
+// We use a generic user agent as required by the library
+const client = createClient("rmv-voice-app");
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Helper to fetch from RMV API
-  async function fetchRMV(endpoint: string, params: Record<string, string>) {
-    const searchParams = new URLSearchParams({
-      accessId: RMV_API_KEY || "",
-      format: "json",
-      ...params,
-    });
-
-    const url = `${RMV_BASE_URL}/${endpoint}?${searchParams.toString()}`;
-    console.log(`[RMV API] Fetching: ${url}`);
-
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "RMV-Voice-App/1.0",
-        "Accept": "application/json"
-      }
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[RMV API Error] Status: ${response.status}, Body: ${errorText}`);
-      throw new Error(`RMV API Error: ${response.status} ${response.statusText}`);
-    }
-    return response.json();
-  }
 
   // 1. Search Location (Text)
   app.get("/api/locations/search", async (req, res) => {
@@ -43,33 +16,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Query parameter is required" });
       }
 
-      const data = await fetchRMV("location.name", {
-        input: query,
-        type: "S", // Stations only
-        maxNo: "10", // Request more results for better fuzzy matching
-      });
+      // DB HAFAS: client.locations(name, [opt])
+      const locations = await client.locations(query, { results: 10 });
 
-      // Normalize response
-      const locationList = data.stopLocationOrCoordLocation || data.StopLocation;
-      const stops = Array.isArray(locationList) ? locationList : (locationList ? [locationList] : []);
-
-      const results = stops
-        .map((item: any) => {
-          const stop = item.StopLocation || item;
-          if (!stop.extId) return null;
-          return {
-            id: stop.extId,
-            name: stop.name,
-            lat: stop.lat,
-            lon: stop.lon,
-          };
-        })
-        .filter(Boolean);
+      // Normalize response for frontend
+      const results = locations
+        .filter(loc => loc.type === 'station' || loc.type === 'stop')
+        .map((loc: any) => ({
+          id: loc.id,
+          name: loc.name,
+          lat: loc.location?.latitude,
+          lon: loc.location?.longitude,
+        }));
 
       res.json(results);
     } catch (error: any) {
       console.error("Location search error:", error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message || "Internal Server Error" });
     }
   });
 
@@ -81,39 +44,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "lat and lon parameters are required" });
       }
 
-      const data = await fetchRMV("location.nearbystops", {
-        originCoordLat: lat as string,
-        originCoordLong: lon as string,
-        r: (r as string) || "1000", // Default 1000m radius
-        type: "S", // Stations only
-      });
+      const latitude = parseFloat(lat as string);
+      const longitude = parseFloat(lon as string);
+      const distance = parseInt((r as string) || "1000", 10);
 
-      // Normalize response
-      const locationList = data.stopLocationOrCoordLocation || data.StopLocation;
-      const stops = Array.isArray(locationList) ? locationList : (locationList ? [locationList] : []);
+      // DB HAFAS: client.nearby({ latitude, longitude }, [opt])
+      const nearby = await client.nearby(
+        { latitude, longitude },
+        { distance, results: 10 }
+      );
 
-      const results = stops
-        .map((item: any) => {
-          const stop = item.StopLocation || item;
-          if (!stop.extId) return null;
-          return {
-            id: stop.extId,
-            name: stop.name,
-            lat: stop.lat,
-            lon: stop.lon,
-            distance: stop.dist, // Distance in meters
-          };
-        })
-        .filter(Boolean);
+      const results = nearby
+        .filter(loc => loc.type === 'station' || loc.type === 'stop')
+        .map((loc: any) => ({
+          id: loc.id,
+          name: loc.name,
+          lat: loc.location?.latitude,
+          lon: loc.location?.longitude,
+          distance: loc.distance, // db-hafas returns distance in meters
+        }));
 
       res.json(results);
     } catch (error: any) {
       console.error("Nearby search error:", error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message || "Internal Server Error" });
     }
   });
 
-  // 3. Search Trips (Routing) with Accessibility
+  // 3. Search Trips (Routing)
   app.get("/api/trips", async (req, res) => {
     try {
       const { originId, destId, profile } = req.query;
@@ -122,45 +80,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "originId and destId are required" });
       }
 
-      const params: Record<string, string> = {
-        originId: originId as string,
-        destId: destId as string,
-        numF: "3", // Number of following trips
+      const options: any = {
+        results: 3,
+        transfers: -1, // unlimited
       };
 
-      // Apply Accessibility Profiles
+      // Apply Accessibility Profiles (DB HAFAS supports accessibility options)
       if (profile === "wheelchair") {
-        params.avoidPaths = "SW,ES"; // No stairs, no escalators
-        params.changeTimePercent = "200"; // Double transfer time
-        // params.mobilityProfile = "!BLOCK_BACKWARDS_TRAVEL"; // Example if supported
+        options.accessibility = 'complete';
       } else if (profile === "mobility_impaired") {
-        params.changeTimePercent = "150"; // 1.5x transfer time
-        params.avoidPaths = "SW"; // No stairs preferred
+        options.accessibility = 'partial';
       }
 
-      const data = await fetchRMV("trip", params);
+      // DB HAFAS: client.journeys(from, to, [opt])
+      const journeys = await client.journeys(originId as string, destId as string, options);
 
-      if (!data.Trip) {
+      if (!journeys.journeys) {
         return res.json([]);
       }
 
-      const trips = data.Trip.map((trip: any) => {
-        const legs = Array.isArray(trip.LegList.Leg) ? trip.LegList.Leg : [trip.LegList.Leg];
+      // Map DB HAFAS format to our frontend format
+      const trips = journeys.journeys.map((journey: any) => {
+        const legs = journey.legs.map((leg: any) => {
+          return {
+            Origin: {
+              name: leg.origin.name,
+              time: leg.departure, // ISO string
+              date: leg.departure.split('T')[0],
+              track: leg.platform,
+              rtTime: leg.plannedDeparture !== leg.departure ? leg.departure : undefined, // Logic for delay
+              // DB HAFAS gives specific delay fields, but we map simply here
+            },
+            Destination: {
+              name: leg.destination.name,
+              time: leg.arrival,
+              date: leg.arrival.split('T')[0],
+              track: leg.arrivalPlatform,
+            },
+            name: leg.line?.name || leg.line?.productName || "Fußweg", // Line name or "Walk"
+            type: leg.mode, // "train", "bus", "walking"
+          };
+        });
+
+        // Filter out walking-only legs at start/end if desired, but for now keep all
 
         return {
           legs,
-          duration: trip.duration,
-          startTime: legs[0].Origin.time,
-          startDate: legs[0].Origin.date,
-          endTime: legs[legs.length - 1].Destination.time,
-          endDate: legs[legs.length - 1].Destination.date,
+          duration: "PT" + Math.floor((new Date(journey.arrival).getTime() - new Date(journey.departure).getTime()) / 60000) + "M", // Simple duration format for frontend
+          startTime: journey.departure,
+          startDate: journey.departure.split('T')[0],
+          endTime: journey.arrival,
+          endDate: journey.arrival.split('T')[0],
         };
       });
 
       res.json(trips);
     } catch (error: any) {
       console.error("Trip search error:", error);
-      res.status(500).json({ message: error.message });
+      res.status(500).json({ message: error.message || "Internal Server Error" });
     }
   });
 
