@@ -1,10 +1,12 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import createClient from "db-hafas";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const { createDbHafas } = require("db-hafas");
 
 // Initialize DB HAFAS Client
 // We use a generic user agent as required by the library
-const client = createClient("rmv-voice-app");
+const client = createDbHafas("rmv-voice-app");
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
