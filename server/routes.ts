@@ -8,7 +8,6 @@ const API_BASE = "https://v6.db.transport.rest";
 export async function registerRoutes(app: Express): Promise<Server> {
 
   // 1. Search Location (Text)
-  // Endpoint: /locations?query=...
   app.get("/api/locations/search", async (req, res) => {
     try {
       const { query } = req.query;
@@ -26,7 +25,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = await response.json();
 
-      // Filter for stations/stops and map to frontend format
       const results = data
         .filter((loc: any) => loc.type === 'station' || loc.type === 'stop')
         .map((loc: any) => ({
@@ -44,7 +42,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 2. Search Nearby Stations (GPS)
-  // Endpoint: /stops/nearby?latitude=...&longitude=...
   app.get("/api/locations/nearby", async (req, res) => {
     try {
       const { lat, lon, r } = req.query;
@@ -52,10 +49,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "lat and lon parameters are required" });
       }
 
-      const distance = parseInt((r as string) || "1000", 10);
+      // Ensure valid numbers
+      const latitude = parseFloat(lat as string);
+      const longitude = parseFloat(lon as string);
+      const distance = parseInt((r as string) || "2000", 10); // Increased default radius to 2km
 
       const response = await fetch(
-        `${API_BASE}/stops/nearby?latitude=${lat}&longitude=${lon}&distance=${distance}&results=10`
+        `${API_BASE}/stops/nearby?latitude=${latitude}&longitude=${longitude}&distance=${distance}&results=10`
       );
 
       if (!response.ok) {
@@ -82,7 +82,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 3. Search Trips (Routing)
-  // Endpoint: /journeys?from=...&to=...
   app.get("/api/trips", async (req, res) => {
     try {
       const { originId, destId, profile } = req.query;
@@ -91,14 +90,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "originId and destId are required" });
       }
 
-      let url = `${API_BASE}/journeys?from=${encodeURIComponent(originId as string)}&to=${encodeURIComponent(destId as string)}&results=3`;
+      // Added &stopovers=true to get intermediate stops
+      let url = `${API_BASE}/journeys?from=${encodeURIComponent(originId as string)}&to=${encodeURIComponent(destId as string)}&results=3&stopovers=true`;
 
-      // Accessibility options (mapped to API parameters if supported, 
-      // otherwise handled by frontend logic or ignored if API doesn't support it directly in this version)
-      // v6.db.transport.rest might not support 'accessibility' param directly in all backends,
-      // but we keep the logic clean.
       if (profile === "wheelchair") {
-        // url += '&accessibility=complete'; // Uncomment if supported
+        // url += '&accessibility=complete'; 
       }
 
       const response = await fetch(url);
@@ -112,7 +108,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Map to frontend format
       const trips = journeys.map((journey: any) => {
-        const legs = journey.legs.map((leg: any) => {
+        let previousArrival: Date | null = null;
+
+        const legs = journey.legs.map((leg: any, index: number) => {
 
           const formatTime = (iso: string) =>
             iso ? new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : "";
@@ -120,23 +118,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const formatDate = (iso: string) =>
             iso ? new Date(iso).toLocaleDateString('de-DE') : "";
 
+          // Calculate transfer time from previous leg
+          let transferDuration = 0;
+          if (previousArrival && leg.departure) {
+            const departureTime = new Date(leg.departure).getTime();
+            const arrivalTime = previousArrival.getTime();
+            transferDuration = Math.max(0, Math.floor((departureTime - arrivalTime) / 60000));
+          }
+          previousArrival = leg.arrival ? new Date(leg.arrival) : null;
+
           return {
             Origin: {
               name: leg.origin.name,
               time: formatTime(leg.departure),
               date: formatDate(leg.departure),
-              track: leg.departurePlatform,
+              track: leg.departurePlatform || leg.platform, // Try both fields
               rtTime: leg.plannedDeparture !== leg.departure ? formatTime(leg.departure) : undefined,
             },
             Destination: {
               name: leg.destination.name,
               time: formatTime(leg.arrival),
               date: formatDate(leg.arrival),
-              track: leg.arrivalPlatform,
+              track: leg.arrivalPlatform || leg.platform, // Try both fields
             },
             name: leg.line?.name || (leg.walking ? "Fußweg" : "Zug"),
             type: leg.line?.mode || (leg.walking ? "walking" : "train"),
             direction: leg.direction,
+            transferDuration: index > 0 ? transferDuration : undefined, // Transfer time before this leg
+            stopovers: leg.stopovers ? leg.stopovers.map((stop: any) => ({
+              name: stop.stop?.name,
+              arrival: formatTime(stop.arrival),
+              departure: formatTime(stop.departure),
+              track: stop.arrivalPlatform || stop.departurePlatform
+            })) : []
           };
         });
 
@@ -147,11 +161,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         return {
           legs,
-          duration: `PT${durationMinutes}M`, // ISO duration format roughly
+          duration: `PT${durationMinutes}M`,
           startTime: new Date(journey.legs[0].departure).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
           startDate: new Date(journey.legs[0].departure).toLocaleDateString('de-DE'),
           endTime: new Date(journey.legs[journey.legs.length - 1].arrival).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
           endDate: new Date(journey.legs[journey.legs.length - 1].arrival).toLocaleDateString('de-DE'),
+          price: journey.price ? journey.price.amount : undefined, // Include price if available
         };
       });
 
