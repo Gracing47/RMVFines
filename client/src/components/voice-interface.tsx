@@ -34,19 +34,30 @@ export function VoiceInterface() {
       let fromQuery = intent.from;
       const toQuery = intent.to;
 
-      let start;
-      let dest;
+      let start: any;
+      let dest: any;
 
       // Step A: Find Start
       if (!fromQuery || fromQuery === "CURRENT_LOCATION") {
+        cancelSpeech();
         setIsSpeaking(true);
-        speak("Ich ermittle deinen Standort...", () => setIsSpeaking(false));
-
+        
         try {
+          // First, request permission explicitly
+          const permissionStatus = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+          
+          await new Promise<void>((resolve) => {
+            speak("Ich ermittle deinen Standort...", () => {
+              setIsSpeaking(false);
+              resolve();
+            });
+          });
+
           const position = await new Promise<GeolocationPosition>((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, {
               enableHighAccuracy: true,
-              timeout: 10000
+              timeout: 15000,
+              maximumAge: 0
             });
           });
 
@@ -61,17 +72,25 @@ export function VoiceInterface() {
 
           start = nearbyStations[0];
           fromQuery = "Deinem Standort";
+          
+          cancelSpeech();
           setIsSpeaking(true);
-          speak(`Nächste Haltestelle: ${start.name}`, () => setIsSpeaking(false));
+          await new Promise<void>((resolve) => {
+            speak(`Nächste Haltestelle: ${start.name}`, () => {
+              setIsSpeaking(false);
+              resolve();
+            });
+          });
         } catch (geoErr: any) {
-          if (geoErr.code === 1) { // PERMISSION_DENIED
+          if (geoErr.code === 1 || geoErr.name === 'NotAllowedError') { // PERMISSION_DENIED
             setPermissionDeniedType('geolocation');
+            cancelSpeech();
             setIsSpeaking(true);
             speak("Ich brauche deinen Standort. Bitte erlaube den Zugriff zusätzlich oben im Browser.", () => setIsSpeaking(false));
-            setStatus("idle"); // Reset status so UI doesn't show loading
+            setStatus("idle");
             return;
           }
-          throw new Error("Standort konnte nicht ermittelt werden.");
+          throw new Error("Standort konnte nicht ermittert werden.");
         }
       } else {
         const startLocations = await searchLocation(fromQuery);
@@ -106,6 +125,7 @@ export function VoiceInterface() {
       const transportName = firstTrip.legs[0].name;
       const platformType = transportName.includes("Bus") ? "Haltestelle" : "Gleis";
 
+      cancelSpeech();
       setIsSpeaking(true);
       speak(
         `Die nächste Verbindung von ${start.name} nach ${dest.name} geht um ${startTime} Uhr${track ? ` von ${platformType} ${track}` : ''}.`,
@@ -117,6 +137,7 @@ export function VoiceInterface() {
       setStatus("error");
       const msg = err.message || "Ein Fehler ist aufgetreten.";
       setErrorMsg(msg);
+      cancelSpeech();
       setIsSpeaking(true);
       speak(msg, () => setIsSpeaking(false));
     }
@@ -134,6 +155,7 @@ export function VoiceInterface() {
     onError: (err) => {
       if (err === 'not-allowed') {
         setPermissionDeniedType('microphone');
+        cancelSpeech();
         setIsSpeaking(true);
         speak("Ich brauche dein Mikrofon. Bitte erlaube den Zugriff zusätzlich oben im Browser.", () => setIsSpeaking(false));
         setStatus("idle");
@@ -141,7 +163,7 @@ export function VoiceInterface() {
       }
 
       setStatus("error");
-      setShowInput(true); // Auto-show input on error
+      setShowInput(true);
       let msg = "Ein Fehler ist aufgetreten.";
       let speakMsg = "Es gab ein Problem.";
 
@@ -154,6 +176,7 @@ export function VoiceInterface() {
       }
 
       setErrorMsg(msg);
+      cancelSpeech();
       setIsSpeaking(true);
       speak(speakMsg, () => setIsSpeaking(false));
     }

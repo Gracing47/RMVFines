@@ -52,9 +52,14 @@ export function speak(text: string, onEnd?: () => void) {
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'de-DE';
-
+    
+    // Set up event handlers
     if (onEnd) {
       utterance.onend = onEnd;
+      utterance.onerror = (event) => {
+        console.error('Speech synthesis error:', event);
+        onEnd();
+      };
     }
 
     // Function to select the best German voice
@@ -108,7 +113,6 @@ export function speak(text: string, onEnd?: () => void) {
         window.speechSynthesis.onvoiceschanged = null; // Clean up
       };
     }
-    if (onEnd) onEnd();
   }
 }
 
