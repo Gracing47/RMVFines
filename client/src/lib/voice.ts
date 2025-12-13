@@ -158,13 +158,25 @@ export function parseIntent(text: string): { from?: string; to?: string; time?: 
   const lowerText = cleanText;
   let from: string | undefined, to: string | undefined;
 
-  // Pattern 0: "hier nach B" oder "von hier nach B" - prioritize this pattern
-  const patternHier = /^(?:von\s+)?hier\s+(?:nach|zu)\s+(.+)/i;
-  const matchHier = lowerText.match(patternHier);
-
-  if (matchHier) {
+  // Pattern 0: "hier nach B" or "von hier nach B" or "hier von B" - prioritize "hier" patterns
+  // "hier von X" means "from current location to X" (X is the destination)
+  // "hier nach X" means "from current location to X"
+  const patternHierNach = /^(?:von\s+)?hier\s+(?:nach|zu)\s+(.+)/i;
+  const matchHierNach = lowerText.match(patternHierNach);
+  
+  if (matchHierNach) {
     from = "CURRENT_LOCATION";
-    to = matchHier[1].trim();
+    to = matchHierNach[1].trim();
+    return { from, to, time };
+  }
+
+  // Pattern 0b: "hier von X" - from current location to X
+  const patternHierVon = /^hier\s+von\s+(.+)/i;
+  const matchHierVon = lowerText.match(patternHierVon);
+  
+  if (matchHierVon) {
+    from = "CURRENT_LOCATION";
+    to = matchHierVon[1].trim();
     return { from, to, time };
   }
 

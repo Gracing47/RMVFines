@@ -41,11 +41,8 @@ export function VoiceInterface() {
       if (!fromQuery || fromQuery === "CURRENT_LOCATION") {
         cancelSpeech();
         setIsSpeaking(true);
-        
+
         try {
-          // First, request permission explicitly
-          const permissionStatus = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
-          
           await new Promise<void>((resolve) => {
             speak("Ich ermittle deinen Standort...", () => {
               setIsSpeaking(false);
@@ -72,7 +69,7 @@ export function VoiceInterface() {
 
           start = nearbyStations[0];
           fromQuery = "Deinem Standort";
-          
+
           cancelSpeech();
           setIsSpeaking(true);
           await new Promise<void>((resolve) => {
@@ -86,11 +83,11 @@ export function VoiceInterface() {
             setPermissionDeniedType('geolocation');
             cancelSpeech();
             setIsSpeaking(true);
-            speak("Ich brauche deinen Standort. Bitte erlaube den Zugriff zusätzlich oben im Browser.", () => setIsSpeaking(false));
+            speak("Ich brauche deinen Standort. Bitte aktiviere GPS.", () => setIsSpeaking(false));
             setStatus("idle");
             return;
           }
-          throw new Error("Standort konnte nicht ermittert werden.");
+          throw new Error("Standort konnte nicht ermittelt werden.");
         }
       } else {
         const startLocations = await searchLocation(fromQuery);
@@ -236,11 +233,11 @@ export function VoiceInterface() {
       {permissionDeniedType && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-sm w-full border border-slate-100 text-center transform scale-100 animate-in zoom-in-95 duration-300">
-            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+            <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-6">
               {permissionDeniedType === 'microphone' ? <Mic className="h-8 w-8" /> : <MapPin className="h-8 w-8" />}
             </div>
             <h3 className="text-xl font-bold text-slate-900 mb-2">
-              Zugriff erforderlich
+              {permissionDeniedType === 'microphone' ? 'Mikrofon erforderlich' : 'Standort erforderlich'}
             </h3>
             <p className="text-slate-600 mb-6 leading-relaxed">
               {permissionDeniedType === 'microphone'
@@ -248,13 +245,6 @@ export function VoiceInterface() {
                 : "Damit ich Verbindungen von deinem Standort finden kann, benötige ich Zugriff auf deinen Standort."
               }
             </p>
-
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6 text-sm text-slate-500 text-left flex items-start gap-3">
-              <div className="mt-0.5">🔒</div>
-              <div>
-                Tippe auf das <strong>Schloss-Symbol</strong> in der Adressleiste und aktiviere den Zugriff <strong>zusätzlich</strong>.
-              </div>
-            </div>
 
             <div className="flex gap-3">
               <Button
@@ -266,17 +256,33 @@ export function VoiceInterface() {
               </Button>
               <Button
                 className="flex-1 bg-primary hover:bg-primary/90 text-white"
-                onClick={() => {
+                onClick={async () => {
                   setPermissionDeniedType(null);
                   if (permissionDeniedType === 'microphone') {
+                    // Retry voice recognition
                     toggleListening();
                   } else {
-                    // Retry last command? For now just close dialog and let user try again
-                    // Ideally we would retry the last action, but simple is better here.
+                    // Retry GPS request
+                    try {
+                      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, {
+                          enableHighAccuracy: true,
+                          timeout: 15000,
+                          maximumAge: 0
+                        });
+                      });
+                      // If successful, re-process the last input
+                      if (manualInput) {
+                        handleVoiceResult(manualInput);
+                      }
+                    } catch (err) {
+                      // Still denied - show detailed instructions
+                      alert("Bitte erlaube den Zugriff auf deinen Standort in den Browser-Einstellungen (🔒 Schloss-Symbol oben links) und versuche es erneut.");
+                    }
                   }
                 }}
               >
-                Erneut versuchen
+                {permissionDeniedType === 'microphone' ? 'Mikrofon aktivieren' : 'GPS jetzt aktivieren'}
               </Button>
             </div>
           </div>
