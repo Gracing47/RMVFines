@@ -50,30 +50,56 @@ export function VoiceInterface() {
             });
           });
 
+          // Get GPS position with better settings
           const position = await new Promise<GeolocationPosition>((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, {
               enableHighAccuracy: true,
-              timeout: 15000,
-              maximumAge: 0
+              timeout: 30000, // Increased to 30 seconds for better accuracy
+              maximumAge: 10000 // Allow cached position up to 10 seconds old
             });
           });
 
-          const nearbyStations = await searchNearbyStations(
+          // Log position for debugging
+          console.log('GPS Position:', position.coords.latitude, position.coords.longitude, 'Accuracy:', position.coords.accuracy, 'm');
+
+          // Try to find nearby stations with progressive radius search
+          let nearbyStations = await searchNearbyStations(
             position.coords.latitude,
-            position.coords.longitude
+            position.coords.longitude,
+            2500 // Start with 2.5km radius
           );
 
+          // If no stations found within 2.5km, expand search to 5km
           if (nearbyStations.length === 0) {
-            throw new Error("Keine Haltestelle in der Nähe gefunden.");
+            console.log('No stations found within 2.5km, expanding search to 5km...');
+            nearbyStations = await searchNearbyStations(
+              position.coords.latitude,
+              position.coords.longitude,
+              5000 // Expand to 5km radius
+            );
+          }
+
+          if (nearbyStations.length === 0) {
+            throw new Error("Keine Haltestelle in der Nähe gefunden. Bitte gib deinen Startort manuell ein.");
           }
 
           start = nearbyStations[0];
           fromQuery = "Deinem Standort";
 
+          // Add distance info if available
+          const distanceInfo = start.distance
+            ? start.distance < 1000
+              ? `etwa ${Math.round(start.distance)} Meter entfernt`
+              : `etwa ${(start.distance / 1000).toFixed(1)} Kilometer entfernt`
+            : '';
+
           cancelSpeech();
           setIsSpeaking(true);
           await new Promise<void>((resolve) => {
-            speak(`Nächste Haltestelle: ${start.name}`, () => {
+            const message = distanceInfo
+              ? `Nächste Haltestelle: ${start.name}, ${distanceInfo}`
+              : `Nächste Haltestelle: ${start.name}`;
+            speak(message, () => {
               setIsSpeaking(false);
               resolve();
             });
@@ -86,8 +112,12 @@ export function VoiceInterface() {
             speak("Ich brauche deinen Standort. Bitte aktiviere GPS.", () => setIsSpeaking(false));
             setStatus("idle");
             return;
+          } else if (geoErr.code === 3) { // TIMEOUT
+            throw new Error("Standort-Timeout. Bitte versuche es erneut oder gib deinen Startort manuell ein.");
+          } else if (geoErr.code === 2) { // POSITION_UNAVAILABLE
+            throw new Error("Standort nicht verfügbar. Bitte aktiviere GPS und versuche es erneut.");
           }
-          throw new Error("Standort konnte nicht ermittelt werden.");
+          throw new Error(geoErr.message || "Standort konnte nicht ermittelt werden.");
         }
       } else {
         const startLocations = await searchLocation(fromQuery);

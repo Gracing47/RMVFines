@@ -52,7 +52,7 @@ export function speak(text: string, onEnd?: () => void) {
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'de-DE';
-    
+
     // Set up event handlers
     if (onEnd) {
       utterance.onend = onEnd;
@@ -137,7 +137,7 @@ export function parseIntent(text: string): { from?: string; to?: string; time?: 
   }
 
   // 2. Parse absolute time "um HH:MM" or "um HH Uhr"
-  const absoluteTimeMatch = cleanText.match(/um\s+(\d{1,2})(?::(\d{2}))?(?:\s*uhr)?/i);
+  const absoluteTimeMatch = cleanText.match(/um\s+(\d{1,2})(?::(\d{2}))?\s*(?:uhr)?/i);
   if (absoluteTimeMatch) {
     const hours = parseInt(absoluteTimeMatch[1], 10);
     const minutes = absoluteTimeMatch[2] ? parseInt(absoluteTimeMatch[2], 10) : 0;
@@ -146,10 +146,14 @@ export function parseIntent(text: string): { from?: string; to?: string; time?: 
     time.setHours(hours);
     time.setMinutes(minutes);
     time.setSeconds(0);
+    time.setMilliseconds(0);
 
-    // If the resulting time is significantly in the past (e.g. > 2 hours ago), 
-    // the user probably means tomorrow (e.g. at 23:00 saying "um 8 Uhr")
-    // But for simplicity, let's assume today for now unless explicitly stated otherwise.
+    // If the resulting time is in the past, assume the user means tomorrow
+    const now = new Date();
+    if (time < now) {
+      console.log(`Time ${hours}:${minutes.toString().padStart(2, '0')} is in the past, assuming tomorrow`);
+      time.setDate(time.getDate() + 1);
+    }
 
     cleanText = cleanText.replace(absoluteTimeMatch[0], "").trim();
   }
@@ -163,7 +167,7 @@ export function parseIntent(text: string): { from?: string; to?: string; time?: 
   // "hier nach X" means "from current location to X"
   const patternHierNach = /^(?:von\s+)?hier\s+(?:nach|zu)\s+(.+)/i;
   const matchHierNach = lowerText.match(patternHierNach);
-  
+
   if (matchHierNach) {
     from = "CURRENT_LOCATION";
     to = matchHierNach[1].trim();
@@ -173,7 +177,7 @@ export function parseIntent(text: string): { from?: string; to?: string; time?: 
   // Pattern 0b: "hier von X" - from current location to X
   const patternHierVon = /^hier\s+von\s+(.+)/i;
   const matchHierVon = lowerText.match(patternHierVon);
-  
+
   if (matchHierVon) {
     from = "CURRENT_LOCATION";
     to = matchHierVon[1].trim();

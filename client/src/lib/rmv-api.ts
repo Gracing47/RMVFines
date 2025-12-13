@@ -143,11 +143,19 @@ export async function searchLocation(query: string): Promise<StopLocation[]> {
   }
 }
 
-export async function searchNearbyStations(lat: number, lon: number): Promise<StopLocation[]> {
+export async function searchNearbyStations(lat: number, lon: number, radiusMeters: number = 2500): Promise<StopLocation[]> {
   try {
-    const res = await fetch(`/api/locations/nearby?lat=${lat}&lon=${lon}&r=1000`);
+    const res = await fetch(`/api/locations/nearby?lat=${lat}&lon=${lon}&r=${radiusMeters}`);
     if (!res.ok) throw new Error(`API Error: ${res.statusText}`);
-    return await res.json();
+    const stations = await res.json();
+
+    // Sort by distance (closest first) if distance is provided
+    return stations.sort((a: StopLocation, b: StopLocation) => {
+      if (a.distance !== undefined && b.distance !== undefined) {
+        return a.distance - b.distance;
+      }
+      return 0;
+    });
   } catch (error) {
     console.error("Nearby search failed:", error);
     return [];
